@@ -46,11 +46,13 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
   .js,.jsx,.ts,.tsx"`, but we're on ESLint ^9 (flat config), where `--ext` was removed and globs
   live in `eslint.config.*`. Confirm the form reviewers expect before submitting.
 
-### Repo structure (cert prerequisite — **not done in-repo**)
-- ⬜ **Single-visual repository.** Cert requires a repo containing code for *one visual only* — no
-  unrelated code. The current `spc-control-chart` repo also holds the Power Query / DAX dashboard,
-  docs, and sample CSV. **Split `custom_visual/spcControlChart/` into its own repo** for submission.
-- ⬜ **`certification` branch** (lowercase) whose source exactly matches the submitted `.pbiviz`.
+### Repo structure (cert prerequisite)
+- ✅ **Single-visual repository.** This repo (`spcControlChart`) contains code for *one visual only* —
+  split out of the larger `spc-control-chart` dashboard project (which held the Power Query / DAX /
+  CSV). Verified self-contained: `npm install`, `npm test` (70), and `pbiviz package` all pass here.
+- ⬜ **Push to a hosting provider** (e.g. GitHub) so the Power BI team can review it.
+- ⬜ **`certification` branch** (lowercase) whose source exactly matches the submitted `.pbiviz`
+  (create it from the commit you build the submitted package from).
 - ⬜ If private, create a review account with 2FA + recovery codes and grant **read-only** access to
   [`pbicvsupport`](https://github.com/pbicvsupport).
 
