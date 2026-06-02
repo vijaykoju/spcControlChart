@@ -1,0 +1,129 @@
+{
+    "dataRoles": [
+        {
+            "displayName": "Axis (date or category)",
+            "name": "category",
+            "kind": "Grouping"
+        },
+        {
+            "displayName": "Measurement",
+            "name": "measure",
+            "kind": "Measure"
+        },
+        {
+            "displayName": "Tooltip measures",
+            "name": "tooltips",
+            "kind": "Measure"
+        },
+        {
+            "displayName": "Target",
+            "name": "target",
+            "kind": "Measure"
+        }
+    ],
+    "objects": {
+        "controlLimits": {
+            "properties": {
+                "sigmaMultiplier": { "type": { "numeric": true } },
+                "floorLcl": { "type": { "bool": true } }
+            }
+        },
+        "phaseDetection": {
+            "properties": {
+                "enableDetection": { "type": { "bool": true } },
+                "significanceThreshold": { "type": { "numeric": true } },
+                "minSegment": { "type": { "numeric": true } },
+                "useManualChangepoint": { "type": { "bool": true } },
+                "manualChangepoint": { "type": { "numeric": true } }
+            }
+        },
+        "rules": {
+            "properties": {
+                "rule1": { "type": { "bool": true } },
+                "rule2": { "type": { "bool": true } },
+                "rule3": { "type": { "bool": true } },
+                "rule4": { "type": { "bool": true } },
+                "rule5": { "type": { "bool": true } },
+                "rule6": { "type": { "bool": true } },
+                "rule7": { "type": { "bool": true } },
+                "rule8": { "type": { "bool": true } }
+            }
+        },
+        "mrChart": {
+            "properties": {
+                "showMrChart": { "type": { "bool": true } },
+                "heightRatio": { "type": { "numeric": true } }
+            }
+        },
+        "legend": {
+            "properties": {
+                "show": { "type": { "bool": true } },
+                "position": { "type": { "enumeration": [] } },
+                "textColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "labelDataLine": { "type": { "text": true } },
+                "labelCenter": { "type": { "text": true } },
+                "labelLimits": { "type": { "text": true } },
+                "labelZoneA": { "type": { "text": true } },
+                "labelZoneB": { "type": { "text": true } },
+                "labelZoneC": { "type": { "text": true } },
+                "labelViolation": { "type": { "text": true } },
+                "labelTarget": { "type": { "text": true } },
+                "labelPhaseChange": { "type": { "text": true } }
+            }
+        },
+        "annotations": {
+            "properties": {
+                "showPhaseChangeLine": { "type": { "bool": true } },
+                "phaseChangeColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "showTargetLine": { "type": { "bool": true } },
+                "targetColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "dataLabels": { "type": { "enumeration": [] } },
+                "dataLabelColor": { "type": { "fill": { "solid": { "color": true } } } }
+            }
+        },
+        "appearance": {
+            "properties": {
+                "lineColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "violationColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "limitColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "centerColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "zoneAColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "zoneBColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "zoneCColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "violationShape": { "type": { "enumeration": [] } },
+                "pointShape": { "type": { "enumeration": [] } },
+                "showZones": { "type": { "bool": true } },
+                "showZoneLabels": { "type": { "bool": true } }
+            }
+        }
+    },
+    "dataViewMappings": [
+        {
+            "conditions": [
+                {
+                    "category": { "max": 1 },
+                    "measure": { "max": 1 },
+                    "target": { "max": 1 }
+                }
+            ],
+            "categorical": {
+                "categories": {
+                    "for": {
+                        "in": "category"
+                    },
+                    "dataReductionAlgorithm": {
+                        "top": { "count": 30000 }
+                    }
+                },
+                "values": {
+                    "select": [
+                        { "bind": { "to": "measure" } },
+                        { "bind": { "to": "target" } },
+                        { "for": { "in": "tooltips" } }
+                    ]
+                }
+            }
+        }
+    ],
+    "privileges": []
+}

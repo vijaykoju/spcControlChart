@@ -1,0 +1,10 @@
+# Power BI custom visual — build/output (required excluded by certification)
+node_modules/
+.tmp/
+dist/
+
+# Local test build output (committed source lives in test/, output does not)
+test/.out/
+
+# Bundle analyzer output from pbiviz start/package
+webpack.statistics.*.html
