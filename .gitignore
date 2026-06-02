@@ -8,3 +8,6 @@ test/.out/
 
 # Bundle analyzer output from pbiviz start/package
 webpack.statistics.*.html
+
+# Power BI report binaries are listing assets, not source — keep them out of the repo
+*.pbix
