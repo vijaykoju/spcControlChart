@@ -5,6 +5,14 @@
 
 import { StatsOptions } from "./spc/statistics";
 import { ChangepointOptions } from "./spc/changepoint";
+import { ChartType } from "./spc/chartType";
+
+const CHART_TYPES: ChartType[] = ["individuals"];
+
+/** Chart card → chart type. Guards an unknown dropdown value to "individuals". */
+export function toChartType(value: string): ChartType {
+    return (CHART_TYPES as string[]).includes(value) ? (value as ChartType) : "individuals";
+}
 
 /** Control-limits card → statistics options. Guards a non-positive multiplier. */
 export function toStatsOpts(sigmaMultiplier: number, floorLcl: boolean): StatsOptions {
@@ -32,6 +40,11 @@ export function toEnabledRules(toggles: boolean[]): Set<number> {
     const enabled = new Set<number>();
     toggles.forEach((on, i) => { if (on) enabled.add(i + 1); });
     return enabled;
+}
+
+/** Restrict the user-enabled rules to those the selected chart type supports. */
+export function applicableEnabledRules(enabled: Set<number>, applicable: Set<number>): Set<number> {
+    return new Set([...enabled].filter(id => applicable.has(id)));
 }
 
 /** Annotations card → data-label mode. Guards an unexpected dropdown value to "off". */

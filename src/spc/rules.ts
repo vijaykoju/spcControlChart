@@ -10,10 +10,10 @@
  * Equality conventions are preserved exactly from the DAX (see each rule).
  */
 
-import { DataPoint, PhasedStatistics, PointRuleResult } from "./types";
-import { statsForPoint } from "./statistics";
+import { DataPoint, PointRuleResult } from "./types";
+import { LimitsAccessor } from "./chartType";
 
-export type RuleCheck = (points: DataPoint[], i: number, stats: PhasedStatistics) => boolean;
+export type RuleCheck = (points: DataPoint[], i: number, limitsAt: LimitsAccessor) => boolean;
 
 export interface RuleDefinition {
     id: number;
@@ -69,11 +69,11 @@ function fullWindow(points: DataPoint[], i: number, size: number): DataPoint[] |
     return window;
 }
 
-/** Count points within Zone C (inside ±1 sigma) using each point's own phase limits. */
-function countInZoneC(window: DataPoint[], stats: PhasedStatistics): number {
+/** Count points within Zone C (inside ±1 sigma) using each point's own limits. */
+function countInZoneC(window: DataPoint[], limitsAt: LimitsAccessor): number {
     let count = 0;
     for (const q of window) {
-        const s = statsForPoint(stats, q);
+        const s = limitsAt(q);
         if (q.value! >= s.zoneBLower && q.value! <= s.zoneBUpper) count++;
     }
     return count;
@@ -85,15 +85,15 @@ function countInZoneC(window: DataPoint[], stats: PhasedStatistics): number {
 // Suppress those rules in that degenerate case. DELIBERATE divergence from the DAX,
 // which fires spuriously here. Rules 1 (strict >), 5/8 (direction) and 6 (mixture
 // needs none-in-C, but all flat points ARE in C) are unaffected.
-function noVariation(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
-    return statsForPoint(stats, points[i]).sigma === 0;
+function noVariation(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
+    return limitsAt(points[i]).sigma === 0;
 }
 
 // Rule 1 — Beyond Limits: current point beyond its phase's control limits (strict).
-function rule1(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
+function rule1(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
     const p = points[i];
     if (p.value === null) return false; // gap slot — nothing to test
-    const s = statsForPoint(stats, p);
+    const s = limitsAt(p);
     return p.value > s.ucl || p.value < s.lcl;
 }
 
@@ -102,19 +102,19 @@ function rule1(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
 // 2-of-3 count, so the violation lands on the out-of-zone point — not on an in-control
 // point that merely trails two extremes (which the old "2 of any 3" count did, flagging
 // a point sitting on the centre line).
-function rule2(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
-    if (noVariation(points, i, stats)) return false;
+function rule2(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
+    if (noVariation(points, i, limitsAt)) return false;
     const window = fullWindow(points, i, 3);
     if (!window) return false;
     let above = 0;
     let below = 0;
     for (const q of window) {
-        const s = statsForPoint(stats, q);
+        const s = limitsAt(q);
         if (q.value! >= s.zoneAUpper) above++;
         if (q.value! <= s.zoneALower) below++;
     }
     const cur = points[i];
-    const cs = statsForPoint(stats, cur);
+    const cs = limitsAt(cur);
     const curAbove = cur.value! >= cs.zoneAUpper;
     const curBelow = cur.value! <= cs.zoneALower;
     return (curAbove && above >= 2) || (curBelow && below >= 2);
@@ -122,33 +122,33 @@ function rule2(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
 
 // Rule 3 — Zone B: 4 of 5 consecutive in Zone B or beyond, same side.
 // Same current-point-must-be-in-zone requirement as rule 2.
-function rule3(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
-    if (noVariation(points, i, stats)) return false;
+function rule3(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
+    if (noVariation(points, i, limitsAt)) return false;
     const window = fullWindow(points, i, 5);
     if (!window) return false;
     let above = 0;
     let below = 0;
     for (const q of window) {
-        const s = statsForPoint(stats, q);
+        const s = limitsAt(q);
         if (q.value! >= s.zoneBUpper) above++;
         if (q.value! <= s.zoneBLower) below++;
     }
     const cur = points[i];
-    const cs = statsForPoint(stats, cur);
+    const cs = limitsAt(cur);
     const curAbove = cur.value! >= cs.zoneBUpper;
     const curBelow = cur.value! <= cs.zoneBLower;
     return (curAbove && above >= 4) || (curBelow && below >= 4);
 }
 
 // Rule 4 — Run: 7 consecutive on one side of x̄ (>= x̄ counts as above).
-function rule4(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
-    if (noVariation(points, i, stats)) return false;
+function rule4(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
+    if (noVariation(points, i, limitsAt)) return false;
     const window = fullWindow(points, i, 7);
     if (!window) return false;
     let above = 0;
     let below = 0;
     for (const q of window) {
-        const s = statsForPoint(stats, q);
+        const s = limitsAt(q);
         if (q.value! >= s.xBar) above++;
         else below++;
     }
@@ -173,18 +173,18 @@ function rule5(points: DataPoint[], i: number): boolean {
 }
 
 // Rule 6 — Mixture: 8 consecutive with none in Zone C.
-function rule6(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
+function rule6(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
     const window = fullWindow(points, i, 8);
     if (!window) return false;
-    return countInZoneC(window, stats) === 0;
+    return countInZoneC(window, limitsAt) === 0;
 }
 
 // Rule 7 — Stratification: 15 consecutive all in Zone C.
-function rule7(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
-    if (noVariation(points, i, stats)) return false;
+function rule7(points: DataPoint[], i: number, limitsAt: LimitsAccessor): boolean {
+    if (noVariation(points, i, limitsAt)) return false;
     const window = fullWindow(points, i, 15);
     if (!window) return false;
-    return countInZoneC(window, stats) === 15;
+    return countInZoneC(window, limitsAt) === 15;
 }
 
 // Rule 8 — Over-Control: 14 consecutive points strictly alternating up/down. Uses
@@ -210,7 +210,7 @@ const ALL_RULE_IDS = new Set(RULES.map(r => r.id));
  */
 export function evaluateRules(
     points: DataPoint[],
-    stats: PhasedStatistics,
+    limitsAt: LimitsAccessor,
     enabledRules: Set<number> = ALL_RULE_IDS
 ): PointRuleResult[] {
     // Precondition: points must come from buildDataPoints (contiguous, 1-based).
@@ -229,7 +229,7 @@ export function evaluateRules(
         const firedRules: number[] = [];
         if (p.value !== null) {
             for (const rule of RULES) {
-                if (enabledRules.has(rule.id) && rule.check(points, i, stats)) {
+                if (enabledRules.has(rule.id) && rule.check(points, i, limitsAt)) {
                     firedRules.push(rule.id);
                 }
             }

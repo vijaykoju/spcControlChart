@@ -20,12 +20,13 @@ import DataView = powerbi.DataView;
 import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
 
 import { VisualFormattingSettingsModel } from "./settings";
-import { buildDataPoints, computePhasedStatistics } from "./spc/statistics";
-import { resolveChangepoint } from "./spc/changepoint";
+import { buildDataPoints } from "./spc/statistics";
 import { evaluateRules, RULES } from "./spc/rules";
+import { STRATEGIES } from "./spc/strategies";
+import { limitsFromModel } from "./spc/chartType";
 import { extractSeries, hasMeasureColumn } from "./extractData";
 import { renderChart, renderMessage, ChartServices } from "./rendering/chart";
-import { toStatsOpts, toChangepointOptions, toEnabledRules, toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition } from "./settingsMap";
+import { toStatsOpts, toChangepointOptions, toEnabledRules, applicableEnabledRules, toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition, toChartType } from "./settingsMap";
 import { resolveChartColors } from "./theme";
 
 /** Stable palette key for the themed data-line default (so it doesn't shift with the measure name). */
@@ -96,9 +97,13 @@ export class Visual implements IVisual {
                 );
                 const statsOpts = toStatsOpts(
                     s.controlLimits.sigmaMultiplier.value, s.controlLimits.floorLcl.value);
-                const phased = computePhasedStatistics(points, resolveChangepoint(points, cp), statsOpts);
-                const enabledRules = toEnabledRules(s.rules.ruleToggles.map(t => t.value));
-                const results = evaluateRules(points, phased, enabledRules);
+                // Chart-type strategy owns phase resolution + per-point limits (Phase 0: individuals).
+                const strategy = STRATEGIES[toChartType(String(s.chart.chartType.value.value))];
+                const limits = strategy.computeLimits(points, { opts: statsOpts, changepoint: cp });
+                // A chart type can only fire rules that apply to it (Phase 0 individuals = all 8).
+                const enabledRules = applicableEnabledRules(
+                    toEnabledRules(s.rules.ruleToggles.map(t => t.value)), strategy.applicableRules);
+                const results = evaluateRules(points, limitsFromModel(limits), enabledRules);
                 const a = s.appearance;
 
                 // Measure/axis/target columns by role, for display names + the format string.
@@ -161,7 +166,7 @@ export class Visual implements IVisual {
                 }
 
                 renderChart(this.svg, {
-                    points, phased, results,
+                    points, limits, results,
                     measureName,
                     colors: {
                         line: colors.line,

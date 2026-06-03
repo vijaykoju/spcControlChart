@@ -22,6 +22,11 @@
         }
     ],
     "objects": {
+        "chart": {
+            "properties": {
+                "chartType": { "type": { "enumeration": [] } }
+            }
+        },
         "controlLimits": {
             "properties": {
                 "sigmaMultiplier": { "type": { "numeric": true } },

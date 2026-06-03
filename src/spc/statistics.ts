@@ -166,16 +166,6 @@ export function mrLimits(stats: SpcStatistics): { center: number; ucl: number; l
     return { center: stats.mrBar, ucl: D4 * stats.mrBar, lcl: 0 };
 }
 
-/**
- * MR-chart violations: a point's moving range above its phase's MR UCL (beyond-limit only —
- * run rules are invalid on autocorrelated moving ranges). Phase-aware via statsForPoint.
- * The first point (movingRange === null) never flags. Aligned to `points`.
- */
-export function evaluateMrViolations(points: DataPoint[], phased: PhasedStatistics): boolean[] {
-    return points.map(p =>
-        p.movingRange != null && p.movingRange > D4 * statsForPoint(phased, p).mrBar);
-}
-
 /** A contiguous run of points sharing one phase's statistics (for the stepped render). */
 export interface PhaseSegment {
     stats: SpcStatistics;

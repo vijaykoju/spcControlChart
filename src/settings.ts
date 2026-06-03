@@ -17,6 +17,11 @@ import TextInput = formattingSettings.TextInput;
 
 const Min = powerbi.visuals.ValidatorType.Min;
 
+/** Chart-type options (values must match ChartType / toChartType). Phase 0 ships one. */
+const CHART_TYPE_ITEMS: powerbi.IEnumMember[] = [
+    { value: "individuals", displayName: "Individuals (X-mR)" },
+];
+
 /** Marker shape options (keys must match the SYMBOLS map in chart.ts). */
 const SHAPE_ITEMS: powerbi.IEnumMember[] = [
     { value: "circle", displayName: "Circle" },
@@ -47,6 +52,17 @@ const SIDE_POSITION_ITEMS: powerbi.IEnumMember[] = [
     { value: "right", displayName: "Right" },
     { value: "left", displayName: "Left" },
 ];
+
+class ChartCard extends Card {
+    chartType = new ItemDropdown({
+        name: "chartType", displayName: "Chart type",
+        description: "Which SPC control chart to draw.",
+        items: CHART_TYPE_ITEMS, value: { value: "individuals", displayName: "Individuals (X-mR)" },
+    });
+    name = "chart";
+    displayName = "Chart";
+    slices = [this.chartType];
+}
 
 class ControlLimitsCard extends Card {
     sigmaMultiplier = new NumUpDown({
@@ -231,6 +247,7 @@ class LegendCard extends Card {
 }
 
 export class VisualFormattingSettingsModel extends Model {
+    chart = new ChartCard();
     controlLimits = new ControlLimitsCard();
     phaseDetection = new PhaseDetectionCard();
     rules = new RulesCard();
@@ -239,5 +256,5 @@ export class VisualFormattingSettingsModel extends Model {
     mrChart = new MrChartCard();
     legend = new LegendCard();
     appearance = new AppearanceCard();
-    cards = [this.controlLimits, this.phaseDetection, this.rules, this.ruleReference, this.annotations, this.mrChart, this.legend, this.appearance];
+    cards = [this.chart, this.controlLimits, this.phaseDetection, this.rules, this.ruleReference, this.annotations, this.mrChart, this.legend, this.appearance];
 }
