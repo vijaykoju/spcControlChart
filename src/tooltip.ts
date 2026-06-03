@@ -22,9 +22,11 @@ export function buildTooltipItems(
 ): VisualTooltipDataItem[] {
     const s = statsForPoint(phased, point);
     const phase = point.index < phased.changeAt ? 1 : 2;
-    const firedNames = (results[point.index - 1]?.firedRules ?? [])
-        .map(id => RULES.find(r => r.id === id)?.name)
-        .filter((n): n is string => !!n);
+    // One row per fired rule (name → plain-language reason), so the tooltip explains *why* this
+    // point is flagged right where the user is looking — not just which rule numbers tripped.
+    const firedRules = (results[point.index - 1]?.firedRules ?? [])
+        .map(id => RULES.find(r => r.id === id))
+        .filter((r): r is typeof RULES[number] => !!r);
 
     const items: VisualTooltipDataItem[] = [
         { displayName: axisName || "Axis", value: point.label },
@@ -43,8 +45,8 @@ export function buildTooltipItems(
     if (point.target != null) {
         items.push({ displayName: targetName || "Target", value: fmt(point.target) });
     }
-    if (firedNames.length > 0) {
-        items.push({ displayName: "Rule violations", value: firedNames.join(", ") });
+    for (const r of firedRules) {
+        items.push({ displayName: r.name, value: r.tooltip });
     }
     return items;
 }

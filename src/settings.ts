@@ -42,6 +42,12 @@ const LEGEND_POSITION_ITEMS: powerbi.IEnumMember[] = [
     { value: "right", displayName: "Right" },
 ];
 
+/** Side positions for the rule-reference panel (values must match toSidePosition). */
+const SIDE_POSITION_ITEMS: powerbi.IEnumMember[] = [
+    { value: "right", displayName: "Right" },
+    { value: "left", displayName: "Left" },
+];
+
 class ControlLimitsCard extends Card {
     sigmaMultiplier = new NumUpDown({
         name: "sigmaMultiplier",
@@ -107,6 +113,25 @@ class RulesCard extends Card {
     name = "rules";
     displayName = "Rules";
     slices = this.ruleToggles;
+}
+
+class RuleReferenceCard extends Card {
+    show = new ToggleSwitch({
+        name: "show",
+        displayName: "Show rule reference",
+        description: "Show a side panel listing the enabled rules. It reserves space beside the chart (it does not cover it). The per-point tooltip always explains a flagged point regardless of this setting.",
+        value: false,
+    });
+    position = new ItemDropdown({
+        name: "position", displayName: "Position",
+        items: SIDE_POSITION_ITEMS, value: { value: "right", displayName: "Right" },
+    });
+    textColor = new ColorPicker({ name: "textColor", displayName: "Text", value: { value: "#333333" } });
+    name = "ruleReference";
+    displayName = "Rule Reference";
+    // `show` is the card's enable toggle → the host hides the rest when the panel is off.
+    topLevelSlice = this.show;
+    slices = [this.position, this.textColor];
 }
 
 class AppearanceCard extends Card {
@@ -209,9 +234,10 @@ export class VisualFormattingSettingsModel extends Model {
     controlLimits = new ControlLimitsCard();
     phaseDetection = new PhaseDetectionCard();
     rules = new RulesCard();
+    ruleReference = new RuleReferenceCard();
     annotations = new AnnotationsCard();
     mrChart = new MrChartCard();
     legend = new LegendCard();
     appearance = new AppearanceCard();
-    cards = [this.controlLimits, this.phaseDetection, this.rules, this.annotations, this.mrChart, this.legend, this.appearance];
+    cards = [this.controlLimits, this.phaseDetection, this.rules, this.ruleReference, this.annotations, this.mrChart, this.legend, this.appearance];
 }

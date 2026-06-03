@@ -9,9 +9,9 @@
 import { extractSeries, hasMeasureColumn } from "../src/extractData";
 import { buildDataPoints, computePhasedStatistics, mrLimits, evaluateMrViolations, D4 } from "../src/spc/statistics";
 import { detectChangepoint, resolveChangepoint } from "../src/spc/changepoint";
-import { evaluateRules } from "../src/spc/rules";
+import { evaluateRules, RULES } from "../src/spc/rules";
 import { buildTooltipItems, buildMrTooltipItems } from "../src/tooltip";
-import { toDataLabelMode, toMrChartOptions, toLegendPosition } from "../src/settingsMap";
+import { toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition } from "../src/settingsMap";
 import { resolveChartColors } from "../src/theme";
 import { buildLegendItems } from "../src/legend";
 
@@ -248,10 +248,21 @@ const spikePh = computePhasedStatistics(spike, spike.length + 1);
 const spikeRes = evaluateRules(spike, spikePh);
 const spikeIdx = spikeRes.findIndex(r => r.violation);
 check("spike fixture produces a violation", spikeIdx >= 0, spikeRes.map(r => r.firedRules));
-check("'Rule violations' line present on a violating point",
-    buildTooltipItems(spike[spikeIdx], spikeRes, spikePh, fmt, "Month", "Rate", "Target").some(i => i.displayName === "Rule violations" && (i.value as string).length > 0));
-check("'Rule violations' line omitted on a clean point",
-    !buildTooltipItems(spike[0], spikeRes, spikePh, fmt, "Month", "Rate", "Target").some(i => i.displayName === "Rule violations"));
+const ruleNames = new Set(RULES.map(r => r.name));
+const spikeTip = buildTooltipItems(spike[spikeIdx], spikeRes, spikePh, fmt, "Month", "Rate", "Target");
+// Each rule that fired on the point gets its own row: displayName = name, value = short tooltip text.
+const firedHere = spikeRes[spikeIdx].firedRules.map(id => RULES.find(r => r.id === id)!);
+check("violating point: one tooltip row per fired rule (name → tooltip text)",
+    firedHere.length > 0 && firedHere.every(r =>
+        spikeTip.some(i => i.displayName === r.name && i.value === r.tooltip)), spikeTip);
+check("clean point: no rule rows in the tooltip",
+    !buildTooltipItems(spike[0], spikeRes, spikePh, fmt, "Month", "Rate", "Target").some(i => ruleNames.has(i.displayName)));
+check("every rule has non-empty tooltip + description text",
+    RULES.every(r => r.tooltip.length > 0 && r.description.length > 0));
+// No em/en dashes in user-facing rule text (tooltip + panel).
+check("rule text has no em/en dashes",
+    RULES.every(r => !/[—–]/.test(r.tooltip) && !/[—–]/.test(r.description)),
+    RULES.filter(r => /[—–]/.test(r.tooltip) || /[—–]/.test(r.description)).map(r => r.name));
 
 const mrTip = buildMrTooltipItems(fromValues([10, 13, 9])[1], computePhasedStatistics(fromValues([10, 13, 9]), 4), fmt, "Month");
 const mrTipBy = Object.fromEntries(mrTip.map(i => [i.displayName, i.value]));
@@ -260,6 +271,8 @@ check("MR tooltip: moving range value", mrTipBy["Moving range"] === fmt(3));
 // ============================================================ settingsMap (m10/m13)
 
 check("toDataLabelMode passthrough + guard", toDataLabelMode("all") === "all" && toDataLabelMode("violations") === "violations" && toDataLabelMode("xyz") === "off");
+check("toSidePosition passthrough + guard",
+    toSidePosition("left") === "left" && toSidePosition("right") === "right" && toSidePosition("xyz") === "right");
 check("toMrChartOptions clamps", toMrChartOptions(true, 0.05).ratio === 0.1 && toMrChartOptions(true, 0.8).ratio === 0.5 && toMrChartOptions(false, 0.25).ratio === 0.25);
 
 // ============================================================ theme (m12)
