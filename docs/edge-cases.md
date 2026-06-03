@@ -27,3 +27,10 @@ checklist covers the **rendering** edges the unit tests can't exercise. Import t
 | 13 | **High contrast + MR on** | Both panels render in the foreground color, violations in the selected color, zone fills dropped, axis/labels legible. |
 | 14 | **Report theme** | The data line (both charts) adopts the theme color; the Appearance ▸ Data line swatch matches; limits stay red, zones traffic-light. |
 | 15 | **Selection across charts** | Clicking a point on either the individuals or MR chart dims the unselected markers + both lines on both panels; background click clears; right-click → context menu. |
+| 16 | **Rule reference on** (Rule Reference ▸ Show) | A side panel (Right/Left per the Position dropdown) **reserves a strip beside the chart and never covers it**; the chart's plot shrinks to make room. Panel shows a "SPC rules" title + **all enabled rules** (name + fuller description), with a thin divider between it and the chart. Descriptions wrap to the strip width. |
+| 17 | **Rule reference + short viewport** (rules exceed the height) | Panel **scrolls natively** (real scrollbar; wheel, drag, touch) so every rule stays reachable — nothing is silently clipped. Scrolling the panel does **not** clear the chart's selection. |
+| 18 | **Rule reference + very narrow viewport** | If reserving the strip would leave the plot too narrow, the panel **auto-hides** (chart keeps a usable width) rather than crushing the chart. |
+| 19 | **Rule reference + legend on the same side** | Legend and panel **stack** (panel outermost); neither overlaps the other or the plot. |
+| 20 | **Rule reference + high contrast** | Panel text + divider use the HC foreground; legible (no filled background to fight the theme). |
+| 21 | **Rule reference + all rules disabled** | Nothing renders (no enabled rules to list); no error. |
+| 22 | **Export to PDF / PowerPoint with the panel on** | Panel renders in the exported output (it's an HTML `foreignObject` layer — confirm it isn't blank in the export). |

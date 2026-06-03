@@ -65,6 +65,13 @@ export interface ChartModel {
     legendTextColor?: string;
     /** Per-entry legend label overrides (m17); empty → default. */
     legendLabels?: Partial<Record<LegendKey, string>>;
+    // --- Rule reference panel ---
+    showRuleReference?: boolean;
+    /** Which side the reserved panel strip sits on. */
+    ruleReferencePosition?: "left" | "right";
+    ruleReferenceTextColor?: string;
+    /** The enabled rules to list, in id order (name + fuller description). */
+    ruleReferenceItems?: { name: string; description: string }[];
 }
 
 /** Marker shape keys exposed in the format pane → d3 symbol types. */
@@ -107,6 +114,11 @@ const LEGEND_GLYPH = 14;  // swatch width
 const LEGEND_GAP = 6;     // glyph→label gap
 const LEGEND_ITEM_GAP = 14; // gap between items in a row
 
+// Rule-reference side panel (HTML layer): a compact reserved strip; CSS wraps the text to the
+// width (so little blank space) and scrolls vertically when the rules don't fit the height.
+const RR_PAD = 10;          // div padding (px)
+const RULE_PANEL_W = 190;   // reserved strip width (px)
+
 /** Rough on-screen width of a legend item (glyph + gap + ~6.5px/char label + trailing gap). */
 function legendItemWidth(label: string): number {
     return LEGEND_GLYPH + LEGEND_GAP + label.length * 6.5 + LEGEND_ITEM_GAP;
@@ -136,6 +148,10 @@ interface SegmentPixels {
 export function renderChart(
     svg: Svg, model: ChartModel, width: number, height: number, services?: ChartServices
 ): void {
+    // Preserve the rule-panel scroll position across this re-render (data refresh, resize, format
+    // change all rebuild the DOM). Read before the clear; restored after the panel is rebuilt.
+    const prevPanel = svg.select<HTMLElement>(".spc-rule-panel").node();
+    const prevPanelScroll = prevPanel ? prevPanel.scrollTop : 0;
     svg.selectAll("*").remove();
     const { points, phased, results, measureName } = model;
     if (points.length === 0 || width <= 0 || height <= 0) return;
@@ -186,10 +202,23 @@ export function renderChart(
     const showLegend = model.showLegend !== false && legendItems.length > 0 && roomForLegend;
     const legendH = showLegend ? candLegendH : 0;
     const legendW = showLegend ? candLegendW : 0;
-    const gx = MARGIN.left + (showLegend && legendPos === "left" ? legendW : 0);
+
+    // Rule-reference panel: reserve a strip on its side (it sits beside the chart, never over it).
+    // Skipped if reserving it would leave the plot too narrow — same spirit as roomForLegend.
+    const rrPos = model.ruleReferencePosition ?? "right";
+    const rrItems = model.ruleReferenceItems ?? [];
+    const roomForRuleRef = (width - MARGIN.left - MARGIN.right - candLegendW - RULE_PANEL_W) >= 120
+        && (height - MARGIN.top - MARGIN.bottom) >= 80;
+    const showRuleRef = model.showRuleReference === true && rrItems.length > 0 && roomForRuleRef;
+    const panelW = showRuleRef ? RULE_PANEL_W : 0;
+
+    // Side reservations stack legend + panel when both land on the same side (panel outermost).
+    const leftReserve = (showLegend && legendPos === "left" ? legendW : 0) + (showRuleRef && rrPos === "left" ? panelW : 0);
+    const rightReserve = (showLegend && legendPos === "right" ? legendW : 0) + (showRuleRef && rrPos === "right" ? panelW : 0);
+    const gx = MARGIN.left + leftReserve;
     const gy = MARGIN.top + (showLegend && legendPos === "top" ? legendH : 0);
 
-    const innerW = width - MARGIN.left - MARGIN.right - legendW;
+    const innerW = width - MARGIN.left - MARGIN.right - leftReserve - rightReserve;
     const innerH = height - MARGIN.top - MARGIN.bottom - legendH;
     if (innerW <= 0 || innerH <= 0) return;
 
@@ -315,10 +344,13 @@ export function renderChart(
     if (hc) applyHighContrastText(g, model.foreground || "#000000");
 
     if (showLegend) {
+        // A same-side rule panel sits outermost, so a left/right legend shifts inboard by panelW.
+        const rrLeft = showRuleRef && rrPos === "left" ? panelW : 0;
+        const rrRight = showRuleRef && rrPos === "right" ? panelW : 0;
         const rect = {
-            // Left legend sits at x=0 so it clears the Y-axis label band (which occupies the
-            // MARGIN.left strip just before the plot at gx); right legend hugs the far edge.
-            x: legendPos === "right" ? width - LEGEND_COL : (legendPos === "left" ? 0 : gx),
+            // Left legend sits just inboard of any left panel so it clears the Y-axis label band;
+            // right legend hugs the far edge, shifted in by any right panel.
+            x: legendPos === "right" ? width - LEGEND_COL - rrRight : (legendPos === "left" ? rrLeft : gx),
             y: legendPos === "bottom" ? height - legendH : (legendPos === "top" ? MARGIN.top : gy),
             w: legendHoriz ? innerW : LEGEND_COL,
             h: legendHoriz ? legendH : innerH,
@@ -326,6 +358,16 @@ export function renderChart(
         };
         const legendText = hc ? (model.foreground || "#000000") : (model.legendTextColor || DEFAULT_LABEL_COLOR);
         drawLegend(svg, legendItems, rect, legendText, model.violationShape);
+    }
+
+    if (showRuleRef) {
+        drawRuleReferencePanel(svg, rrItems, {
+            x: rrPos === "right" ? width - panelW : 0,
+            y: gy, w: panelW, h: innerH, side: rrPos,
+            textColor: hc ? (model.foreground || "#000000") : (model.ruleReferenceTextColor || DEFAULT_LABEL_COLOR),
+            dividerColor: hc ? (model.foreground || "#000000") : "#cccccc",
+            scrollTop: prevPanelScroll,
+        });
     }
 }
 
@@ -476,6 +518,49 @@ function drawDataLabels(
         .attr("text-anchor", "middle")
         .attr("fill", color)
         .text(p => formatValue(p.value as number));
+}
+
+/**
+ * Rule-reference side panel: an opt-in strip beside the plot (never over it) listing every enabled
+ * rule with its name and a fuller description. Rendered as an HTML layer inside an SVG foreignObject
+ * so it scrolls natively (real scrollbar; wheel/drag/touch) when the rules don't fit the height, and
+ * CSS wraps the text. A thin inboard border separates it from the chart. No filled background, so it
+ * reads on any report theme (HC uses the foreground for text + border).
+ */
+function drawRuleReferencePanel(
+    svg: Svg,
+    items: { name: string; description: string }[],
+    opts: {
+        x: number; y: number; w: number; h: number;
+        side: "left" | "right"; textColor: string; dividerColor: string; scrollTop?: number;
+    }
+): void {
+    const fo = svg.append("foreignObject")
+        .attr("x", opts.x).attr("y", opts.y).attr("width", opts.w).attr("height", opts.h);
+
+    // overflow-y:auto → native scrollbar when the content exceeds the strip height. stopPropagation
+    // on click so interacting with the panel doesn't clear the chart's cross-filter selection (m11).
+    const div = fo.append("xhtml:div").attr("class", "spc-rule-panel")
+        .style("box-sizing", "border-box")
+        .style("width", "100%").style("height", "100%")
+        .style("overflow-y", "auto").style("overflow-x", "hidden")
+        .style("padding", `${RR_PAD}px`)
+        .style("color", opts.textColor)
+        .style(opts.side === "right" ? "border-left" : "border-right", `1px solid ${opts.dividerColor}`)
+        .on("click", (e: MouseEvent) => e.stopPropagation());
+
+    div.append("xhtml:div").attr("class", "spc-rule-panel-title").text("SPC rules");
+    for (const r of items) {
+        const item = div.append("xhtml:div").attr("class", "spc-rule-panel-item");
+        item.append("xhtml:div").attr("class", "spc-rule-panel-name").text(r.name);
+        item.append("xhtml:div").attr("class", "spc-rule-panel-desc").text(r.description);
+    }
+
+    // Restore the pre-render scroll position (the browser clamps to the new content height).
+    if (opts.scrollTop) {
+        const node = div.node() as HTMLElement | null;
+        if (node) node.scrollTop = opts.scrollTop;
+    }
 }
 
 function drawMarkers(

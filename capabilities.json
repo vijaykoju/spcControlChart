@@ -49,6 +49,13 @@
                 "rule8": { "type": { "bool": true } }
             }
         },
+        "ruleReference": {
+            "properties": {
+                "show": { "type": { "bool": true } },
+                "position": { "type": { "enumeration": [] } },
+                "textColor": { "type": { "fill": { "solid": { "color": true } } } }
+            }
+        },
         "mrChart": {
             "properties": {
                 "showMrChart": { "type": { "bool": true } },

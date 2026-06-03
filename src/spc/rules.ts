@@ -18,21 +18,42 @@ export type RuleCheck = (points: DataPoint[], i: number, stats: PhasedStatistics
 export interface RuleDefinition {
     id: number;
     name: string;
+    /** Short one-liner for the violation tooltip (kept terse; no em-dashes). */
+    tooltip: string;
+    /** Fuller explanation for the on-chart rule-reference panel (no em-dashes). */
+    description: string;
     /** Returns true if this rule fires at array position i. */
     check: RuleCheck;
 }
 
-// References the hoisted rule function declarations below — single source of truth
-// for the id -> (name, check) mapping.
+// References the hoisted rule function declarations below — single source of truth for the
+// id -> (name, tooltip, description, check) mapping. `tooltip` is the terse wording shown on a
+// flagged point; `description` is the fuller panel wording. docs/rules.md is the deeper reference.
 export const RULES: RuleDefinition[] = [
-    { id: 1, name: "Beyond Limits", check: rule1 },
-    { id: 2, name: "Zone A", check: rule2 },
-    { id: 3, name: "Zone B", check: rule3 },
-    { id: 4, name: "Run Above/Below", check: rule4 },
-    { id: 5, name: "Trend", check: rule5 },
-    { id: 6, name: "Mixture", check: rule6 },
-    { id: 7, name: "Stratification", check: rule7 },
-    { id: 8, name: "Over-Control", check: rule8 },
+    { id: 1, name: "Beyond Limits", check: rule1,
+        tooltip: "One point beyond the control limits (±3σ).",
+        description: "One point lies outside the control limits (beyond ±3σ). A large, improbable deviation." },
+    { id: 2, name: "Zone A", check: rule2,
+        tooltip: "2 of 3 in Zone A or beyond, same side.",
+        description: "2 of 3 points in a row in Zone A or beyond, on the same side. A moderate shift toward one limit." },
+    { id: 3, name: "Zone B", check: rule3,
+        tooltip: "4 of 5 in Zone B or beyond, same side.",
+        description: "4 of 5 points in a row in Zone B or beyond, on the same side. A smaller but more sustained shift off center." },
+    { id: 4, name: "Run Above/Below", check: rule4,
+        tooltip: "7 in a row on one side of the center line.",
+        description: "7 points in a row on the same side of the center line. The process mean has likely shifted." },
+    { id: 5, name: "Trend", check: rule5,
+        tooltip: "7 in a row steadily rising or falling.",
+        description: "7 points in a row steadily rising or falling. A sustained drift in one direction." },
+    { id: 6, name: "Mixture", check: rule6,
+        tooltip: "8 in a row with none in Zone C.",
+        description: "8 points in a row with none in Zone C (all beyond ±1σ). Points avoid the center, often two mixed processes." },
+    { id: 7, name: "Stratification", check: rule7,
+        tooltip: "15 in a row all inside Zone C.",
+        description: "15 points in a row all inside Zone C (within ±1σ). Points hug the center, often because limits are too wide." },
+    { id: 8, name: "Over-Control", check: rule8,
+        tooltip: "14 in a row alternating up and down.",
+        description: "14 points in a row alternating up and down. Systematic oscillation, often from over-adjustment." },
 ];
 
 /**

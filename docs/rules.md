@@ -5,6 +5,13 @@ enabled rule fires on it. Each rule can be toggled in the **Rules** card of the 
 logic lives in `src/spc/rules.ts`; this document explains what each rule detects, why it matters,
 and the specifics of how it's implemented here.
 
+> **In the visual:** hovering a flagged point lists the rules that tripped *it*, each with a short
+> reason — so you usually don't need this doc to read a single point. For an always-on catalogue of
+> the enabled rules, turn on **Rule Reference** in the format pane (off by default); it shows as a
+> side panel (Right or Left) that reserves space beside the chart rather than covering it, and
+> scrolls when the visual is too short to show every rule. This document remains the deeper
+> reference (zone math, edge cases, implementation notes).
+
 ## Zones and the control band
 
 The chart is an X-mR (individuals & moving-range) control chart. Around the center line (x̄) the
@@ -172,8 +179,9 @@ non-alternating step. Direction-only, so phase-independent.
 ## Notes
 
 - **Rule selection:** all eight default to enabled. Disabling a rule in the format pane removes its
-  contribution to the violation flag (and from the per-point tooltip's "Rule violations" line).
-- **Multiple rules** can fire on the same point; the tooltip lists each by name.
+  contribution to the violation flag (and from the tooltip and Rule Reference panel).
+- **Multiple rules** can fire on the same point; the tooltip shows one row per fired rule (its name
+  and reason).
 - **Divergence from the source dashboard:** Rules 2, 3, 5, and 8 were tightened from the original DAX
   measures so the violation lands on the point that actually breaks the pattern (and so a single
   reversal/non-alternating step no longer trips the trend/over-control rules). On data with these

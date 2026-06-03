@@ -22,10 +22,10 @@ import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
 import { VisualFormattingSettingsModel } from "./settings";
 import { buildDataPoints, computePhasedStatistics } from "./spc/statistics";
 import { resolveChangepoint } from "./spc/changepoint";
-import { evaluateRules } from "./spc/rules";
+import { evaluateRules, RULES } from "./spc/rules";
 import { extractSeries, hasMeasureColumn } from "./extractData";
 import { renderChart, renderMessage, ChartServices } from "./rendering/chart";
-import { toStatsOpts, toChangepointOptions, toEnabledRules, toDataLabelMode, toMrChartOptions, toLegendPosition } from "./settingsMap";
+import { toStatsOpts, toChangepointOptions, toEnabledRules, toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition } from "./settingsMap";
 import { resolveChartColors } from "./theme";
 
 /** Stable palette key for the themed data-line default (so it doesn't shift with the measure name). */
@@ -97,8 +97,8 @@ export class Visual implements IVisual {
                 const statsOpts = toStatsOpts(
                     s.controlLimits.sigmaMultiplier.value, s.controlLimits.floorLcl.value);
                 const phased = computePhasedStatistics(points, resolveChangepoint(points, cp), statsOpts);
-                const results = evaluateRules(
-                    points, phased, toEnabledRules(s.rules.ruleToggles.map(t => t.value)));
+                const enabledRules = toEnabledRules(s.rules.ruleToggles.map(t => t.value));
+                const results = evaluateRules(points, phased, enabledRules);
                 const a = s.appearance;
 
                 // Measure/axis/target columns by role, for display names + the format string.
@@ -111,6 +111,11 @@ export class Visual implements IVisual {
                 const an = s.annotations;
                 const mr = toMrChartOptions(s.mrChart.showMrChart.value, s.mrChart.heightRatio.value);
                 const lg = s.legend;
+                const rr = s.ruleReference;
+                // The panel lists only the rules that can actually fire (enabled), in id order.
+                const ruleReferenceItems = RULES
+                    .filter(r => enabledRules.has(r.id))
+                    .map(r => ({ name: r.name, description: r.description }));
 
                 // Theming (m12): theme the line default (synced to the pane), then resolve the
                 // final palette — high-contrast overrides everything; normal is a passthrough.
@@ -119,6 +124,17 @@ export class Visual implements IVisual {
                 const lineUserSet = !!dataView?.metadata?.objects?.appearance?.lineColor;
                 if (!isHC && !lineUserSet) {
                     a.lineColor.value.value = palette.getColor(THEME_LINE_KEY).value;
+                }
+                // Default the rule-reference + legend text to the theme foreground so they're legible
+                // on light AND dark report backgrounds (both draw on the bare background). Honors a
+                // user-picked color; HC supplies its own foreground in the renderer.
+                const rrTextUserSet = !!dataView?.metadata?.objects?.ruleReference?.textColor;
+                if (!isHC && !rrTextUserSet) {
+                    rr.textColor.value.value = palette.foreground.value;
+                }
+                const legendTextUserSet = !!dataView?.metadata?.objects?.legend?.textColor;
+                if (!isHC && !legendTextUserSet) {
+                    lg.textColor.value.value = palette.foreground.value;
                 }
                 const colors = resolveChartColors({
                     isHighContrast: isHC,
@@ -184,6 +200,10 @@ export class Visual implements IVisual {
                         target: lg.labelTarget.value,
                         phaseChange: lg.labelPhaseChange.value,
                     },
+                    showRuleReference: rr.show.value,
+                    ruleReferencePosition: toSidePosition(String(rr.position.value.value)),
+                    ruleReferenceTextColor: rr.textColor.value.value,
+                    ruleReferenceItems,
                 }, width, height, services);
             } else {
                 renderMessage(this.svg, emptyMessage(dataView), width, height);

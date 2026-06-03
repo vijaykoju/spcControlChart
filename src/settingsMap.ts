@@ -49,3 +49,10 @@ export function toMrChartOptions(show: boolean, ratio: number): { show: boolean;
 export function toLegendPosition(value: string): "top" | "bottom" | "left" | "right" {
     return value === "bottom" || value === "left" || value === "right" ? value : "top";
 }
+
+export type SidePosition = "left" | "right";
+
+/** Rule-reference card → side. Guards an unexpected dropdown value to "right". */
+export function toSidePosition(value: string): SidePosition {
+    return value === "left" ? "left" : "right";
+}
