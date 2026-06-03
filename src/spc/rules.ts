@@ -77,8 +77,10 @@ function rule1(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
 }
 
 // Rule 2 — Zone A: 2 of 3 consecutive in Zone A or beyond, same side.
-// NOTE: counts "2 of any 3" in the trailing window; does not require the current
-// point itself to be in the signaling zone. Deliberate — faithful to the DAX.
+// The current point must ITSELF be in the signaling zone on the side that reaches the
+// 2-of-3 count, so the violation lands on the out-of-zone point — not on an in-control
+// point that merely trails two extremes (which the old "2 of any 3" count did, flagging
+// a point sitting on the centre line).
 function rule2(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
     if (noVariation(points, i, stats)) return false;
     const window = fullWindow(points, i, 3);
@@ -90,11 +92,15 @@ function rule2(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
         if (q.value! >= s.zoneAUpper) above++;
         if (q.value! <= s.zoneALower) below++;
     }
-    return above >= 2 || below >= 2;
+    const cur = points[i];
+    const cs = statsForPoint(stats, cur);
+    const curAbove = cur.value! >= cs.zoneAUpper;
+    const curBelow = cur.value! <= cs.zoneALower;
+    return (curAbove && above >= 2) || (curBelow && below >= 2);
 }
 
 // Rule 3 — Zone B: 4 of 5 consecutive in Zone B or beyond, same side.
-// Same "k of any n" convention as rule 2 — deliberate, faithful to the DAX.
+// Same current-point-must-be-in-zone requirement as rule 2.
 function rule3(points: DataPoint[], i: number, stats: PhasedStatistics): boolean {
     if (noVariation(points, i, stats)) return false;
     const window = fullWindow(points, i, 5);
@@ -106,7 +112,11 @@ function rule3(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
         if (q.value! >= s.zoneBUpper) above++;
         if (q.value! <= s.zoneBLower) below++;
     }
-    return above >= 4 || below >= 4;
+    const cur = points[i];
+    const cs = statsForPoint(stats, cur);
+    const curAbove = cur.value! >= cs.zoneBUpper;
+    const curBelow = cur.value! <= cs.zoneBLower;
+    return (curAbove && above >= 4) || (curBelow && below >= 4);
 }
 
 // Rule 4 — Run: 7 consecutive on one side of x̄ (>= x̄ counts as above).
@@ -124,17 +134,21 @@ function rule4(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
     return above === 7 || below === 7;
 }
 
-// Rule 5 — Trend: 7 consecutive trending up or down. Uses direction only (phase-
-// independent). Gate is windowSize >= 6 (NOT === 7): the 7-point lookback shrinks
-// to 6 when it includes the excluded index-1 point (null direction).
-// NOTE: counts up/down directions in the window (>= 6), not a strictly contiguous
-// monotonic run — so one flat/down point among 7 can still fire. Deliberate,
-// faithful to the DAX (matches the "k of any n" convention in rules 2/3).
+// Rule 5 — Trend: 7 consecutive points strictly trending up or down. Uses direction
+// only (phase-independent). A 7-point trend is the 6 transitions ending at i (the
+// directions of points i-5..i, which span points i-6..i) all sharing one nonzero sign.
+// Requiring a contiguous monotonic run — not "6 of any 7 directions" — stops a single
+// reversal inside the window (a zig-zag) from being read as a trend.
 function rule5(points: DataPoint[], i: number): boolean {
-    const window = points.slice(Math.max(0, i - 6), i + 1).filter(p => p.direction !== null);
-    const up = window.filter(p => p.direction === 1).length;
-    const down = window.filter(p => p.direction === -1).length;
-    return window.length >= 6 && (up >= 6 || down >= 6);
+    if (i < 6) return false; // need 7 points (i-6..i)
+    let up = true;
+    let down = true;
+    for (let pos = i - 5; pos <= i; pos++) {
+        const d = points[pos].direction;
+        if (d !== 1) up = false;
+        if (d !== -1) down = false;
+    }
+    return up || down;
 }
 
 // Rule 6 — Mixture: 8 consecutive with none in Zone C.
@@ -152,30 +166,19 @@ function rule7(points: DataPoint[], i: number, stats: PhasedStatistics): boolean
     return countInZoneC(window, stats) === 15;
 }
 
-// Rule 8 — Over-Control: 14 consecutive alternating up/down. Uses direction only.
-// windowSize >= 13; the inner sub-window [cur-12, cur] must hold >= 12 points, each
-// compared to its immediate predecessor's direction (positional). An alternation is
-// two consecutive nonzero directions of opposite sign.
+// Rule 8 — Over-Control: 14 consecutive points strictly alternating up/down. Uses
+// direction only. The 14 points i-13..i alternate iff their 13 inner transitions
+// (the directions of points i-12..i) are all nonzero AND each is opposite the previous.
+// Requiring strict alternation — not "12 of ~13 alternations" — stops one non-alternating
+// step from tripping the rule (the same leniency that was fixed in the trend rule).
 function rule8(points: DataPoint[], i: number): boolean {
-    const hasDir = (pos: number) => points[pos].direction !== null;
-    const windowStart = Math.max(0, i - 13);
-    const innerStart = Math.max(0, i - 12);
-
-    let windowSize = 0;
-    for (let pos = windowStart; pos <= i; pos++) {
-        if (hasDir(pos)) windowSize++;
-    }
-
-    let innerCount = 0;
-    let alternations = 0;
-    for (let pos = innerStart; pos <= i; pos++) {
-        if (!hasDir(pos)) continue;
-        innerCount++;
+    if (i < 13) return false; // need 14 points (i-13..i)
+    for (let pos = i - 12; pos <= i; pos++) {
         const dir = points[pos].direction;
-        const prevDir = pos > 0 ? points[pos - 1].direction : null;
-        if (dir !== 0 && prevDir !== null && prevDir !== 0 && dir !== prevDir) alternations++;
+        if (dir === null || dir === 0) return false;
+        if (pos > i - 12 && dir === points[pos - 1].direction) return false; // not opposite → run broken
     }
-    return windowSize >= 13 && innerCount >= 12 && alternations >= 12;
+    return true;
 }
 
 const ALL_RULE_IDS = new Set(RULES.map(r => r.id));

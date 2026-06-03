@@ -193,6 +193,31 @@ check("rule4 fires at the 7th consecutive (window boundary)", runRes[11].firedRu
 check("rule4 does not fire with only 6 in window", !runRes[10].firedRules.includes(4), runRes[10].firedRules);
 check("rules don't fire on a short series", evaluateRules(fromValues([1, 2, 1]), computePhasedStatistics(fromValues([1, 2, 1]), 4)).every(r => !r.violation));
 
+// rules 2/3 fire on the out-of-zone point itself, not an in-control point that merely trails it.
+// Regression (screenshot 8092): 10.55 — sitting on x̄ — was flagged because its two predecessors
+// (7.63, 6.83) were below Zone A; the violation belongs on the low point, not the one after it.
+const r2fix = fromValues([11.04, 10.15, 7.63, 6.83, 10.55, 11.21, 9.96, 10.67, 10.19, 11.12, 11.31, 9.83, 8.78, 11.15, 10.79, 11.06, 12.60, 9.06, 10.94, 10.12, 10.60]);
+const r2res = evaluateRules(r2fix, computePhasedStatistics(r2fix, r2fix.length + 1));
+check("rule2 fires on the low point (6.83), not the in-zone point after it (10.55)",
+    r2res[3].firedRules.includes(2) && !r2res[4].firedRules.includes(2), [r2res[3].firedRules, r2res[4].firedRules]);
+
+// rule5 requires a strictly monotonic run, not "6 of any 7 directions": a single reversal
+// inside the 7-point window must not read as a trend.
+const trend7 = fromValues([1, 2, 3, 4, 5, 6, 7, 8]);
+check("rule5 fires on a strict 7-point up-trend",
+    evaluateRules(trend7, computePhasedStatistics(trend7, trend7.length + 1))[6].firedRules.includes(5));
+const zig = fromValues([1, 2, 3, 4, 5, 6, 5.5, 7]); // 6 ups + 1 reversal in the last 7
+check("rule5 does NOT fire when the window has a reversal (no false trend)",
+    !evaluateRules(zig, computePhasedStatistics(zig, zig.length + 1)).some(r => r.firedRules.includes(5)));
+
+// rule8 requires strict 14-point alternation; one non-alternating step must not trip it.
+const alt = fromValues(Array.from({ length: 16 }, (_, k) => (k % 2 === 0 ? 1 : 2)));
+check("rule8 fires on a strict 14-point alternation",
+    evaluateRules(alt, computePhasedStatistics(alt, alt.length + 1)).some(r => r.firedRules.includes(8)));
+const altBreak = fromValues([1, 2, 1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2, 1]); // the "2,2" breaks alternation
+check("rule8 does NOT fire when one step fails to alternate",
+    !evaluateRules(altBreak, computePhasedStatistics(altBreak, altBreak.length + 1)).some(r => r.firedRules.includes(8)));
+
 let threw = false;
 try {
     evaluateRules([{ index: 2, label: "x", value: 1, movingRange: null, prevValue: null, direction: null, categoryIndex: 0 }] as any, onePh);
