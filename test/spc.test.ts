@@ -7,11 +7,14 @@
  */
 
 import { extractSeries, hasMeasureColumn } from "../src/extractData";
-import { buildDataPoints, computePhasedStatistics, mrLimits, evaluateMrViolations, D4 } from "../src/spc/statistics";
+import { buildDataPoints, computePhasedStatistics, mrLimits, D4 } from "../src/spc/statistics";
 import { detectChangepoint, resolveChangepoint } from "../src/spc/changepoint";
 import { evaluateRules, RULES } from "../src/spc/rules";
+import { modelFromPhased, individualsStrategy } from "../src/spc/strategies/individuals";
+import { limitsFromModel, companionViolations } from "../src/spc/chartType";
+import { DataPoint, PhasedStatistics } from "../src/spc/types";
 import { buildTooltipItems, buildMrTooltipItems } from "../src/tooltip";
-import { toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition } from "../src/settingsMap";
+import { toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition, toChartType, applicableEnabledRules } from "../src/settingsMap";
 import { resolveChartColors } from "../src/theme";
 import { buildLegendItems } from "../src/legend";
 
@@ -28,6 +31,10 @@ function check(name: string, cond: boolean, got?: unknown) {
 const fromValues = (vals: number[]) =>
     buildDataPoints(vals.map((v, i) => ({ label: "m" + i, value: v, categoryIndex: i })));
 const fmt = (n: number) => n.toFixed(2);
+// Phase 0: the rule engine + tooltips consume a LimitModel/accessor. These adapters let the
+// fixtures keep building a PhasedStatistics directly (to exercise specific phase splits).
+const rulesOf = (points: DataPoint[], ph: PhasedStatistics, enabled?: Set<number>) =>
+    evaluateRules(points, limitsFromModel(modelFromPhased(points, ph)), enabled);
 
 // ============================================================ extractData (m7/m9/m10/m11)
 
@@ -105,7 +112,7 @@ const one = fromValues([5]);
 const onePh = computePhasedStatistics(one, 2);
 check("1 point: movingRange null", one[0].movingRange === null);
 check("1 point: limits finite, = value", Number.isFinite(onePh.phase1.ucl) && onePh.phase1.xBar === 5 && onePh.phase1.ucl === 5);
-check("1 point: no MR violation", evaluateMrViolations(one, onePh)[0] === false);
+check("1 point: no MR violation", companionViolations(modelFromPhased(one, onePh).companion!)[0] === false);
 
 const two = fromValues([5, 8]);
 check("2 points: single MR", two[0].movingRange === null && two[1].movingRange === 3);
@@ -125,7 +132,7 @@ const flat = fromValues(Array(12).fill(5));
 const flatPh = computePhasedStatistics(flat, flat.length + 1);
 check("all-identical: sigma 0, limits collapse to xBar, no NaN",
     flatPh.phase1.sigma === 0 && flatPh.phase1.ucl === 5 && flatPh.phase1.lcl === 5);
-check("all-identical: no rule fires", evaluateRules(flat, flatPh).every(r => !r.violation));
+check("all-identical: no rule fires", rulesOf(flat, flatPh).every(r => !r.violation));
 
 const neg = fromValues([-5, -3, -8, -4, -6]);
 check("negatives: floorLcl on -> lcl floored to 0", computePhasedStatistics(neg, neg.length + 1).phase1.lcl === 0);
@@ -147,7 +154,7 @@ check("MR excludes the gap-spanning pair", Math.abs(gp.phase1.mrBar - 8 / 3) < 1
 
 // a gap breaks a run: no 7-consecutive-real window exists across it → rule 4 never fires
 const gapRun = fromVals([1, 1, 1, 1, 1, 2, 2, 2, null, 2, 2, 2, 2]);
-const gapRunRes = evaluateRules(gapRun, computePhasedStatistics(gapRun, 99));
+const gapRunRes = rulesOf(gapRun, computePhasedStatistics(gapRun, 99));
 check("a gap breaks the run (rule 4 never fires across it)", gapRunRes.every(r => !r.firedRules.includes(4)), gapRunRes.map(r => r.firedRules));
 
 // changepoint ignores gaps and maps the split back to the first phase-2 REAL point's index
@@ -159,7 +166,7 @@ check("changepoint maps changeAt to the real point index (17)", cpGap.changeAt =
 // a gap slot fires NO rule — incl. the direction-based 5/8, which would otherwise fire AT the
 // gap over the preceding run (a 6-point up-trend then a blank → the blank must not violate).
 const trendThenGap = fromVals([1, 2, 3, 4, 5, 6, 7, null]);
-const trendGapRes = evaluateRules(trendThenGap, computePhasedStatistics(trendThenGap, 99));
+const trendGapRes = rulesOf(trendThenGap, computePhasedStatistics(trendThenGap, 99));
 check("a gap slot fires no rule (no trend false-positive at the gap)",
     trendGapRes[7].firedRules.length === 0 && trendGapRes[7].violation === false, trendGapRes[7]);
 
@@ -185,19 +192,20 @@ check("non-finite manual -> detection", resolveChangepoint(step, { manualChangep
 
 // ============================================================ rules (m3) + window boundaries
 
-const results = evaluateRules(pts, ph);
+const results = rulesOf(pts, ph);
+const phModel = modelFromPhased(pts, ph);
 // rule 4 (run of 7): 5 below xBar then 7 above -> fires exactly at the 7th (index 11), not the 6th
 const run = fromValues([...Array(5).fill(1), ...Array(7).fill(2)]);
-const runRes = evaluateRules(run, computePhasedStatistics(run, run.length + 1));
+const runRes = rulesOf(run, computePhasedStatistics(run, run.length + 1));
 check("rule4 fires at the 7th consecutive (window boundary)", runRes[11].firedRules.includes(4), runRes[11].firedRules);
 check("rule4 does not fire with only 6 in window", !runRes[10].firedRules.includes(4), runRes[10].firedRules);
-check("rules don't fire on a short series", evaluateRules(fromValues([1, 2, 1]), computePhasedStatistics(fromValues([1, 2, 1]), 4)).every(r => !r.violation));
+check("rules don't fire on a short series", rulesOf(fromValues([1, 2, 1]), computePhasedStatistics(fromValues([1, 2, 1]), 4)).every(r => !r.violation));
 
 // rules 2/3 fire on the out-of-zone point itself, not an in-control point that merely trails it.
 // Regression (screenshot 8092): 10.55 — sitting on x̄ — was flagged because its two predecessors
 // (7.63, 6.83) were below Zone A; the violation belongs on the low point, not the one after it.
 const r2fix = fromValues([11.04, 10.15, 7.63, 6.83, 10.55, 11.21, 9.96, 10.67, 10.19, 11.12, 11.31, 9.83, 8.78, 11.15, 10.79, 11.06, 12.60, 9.06, 10.94, 10.12, 10.60]);
-const r2res = evaluateRules(r2fix, computePhasedStatistics(r2fix, r2fix.length + 1));
+const r2res = rulesOf(r2fix, computePhasedStatistics(r2fix, r2fix.length + 1));
 check("rule2 fires on the low point (6.83), not the in-zone point after it (10.55)",
     r2res[3].firedRules.includes(2) && !r2res[4].firedRules.includes(2), [r2res[3].firedRules, r2res[4].firedRules]);
 
@@ -205,58 +213,70 @@ check("rule2 fires on the low point (6.83), not the in-zone point after it (10.5
 // inside the 7-point window must not read as a trend.
 const trend7 = fromValues([1, 2, 3, 4, 5, 6, 7, 8]);
 check("rule5 fires on a strict 7-point up-trend",
-    evaluateRules(trend7, computePhasedStatistics(trend7, trend7.length + 1))[6].firedRules.includes(5));
+    rulesOf(trend7, computePhasedStatistics(trend7, trend7.length + 1))[6].firedRules.includes(5));
 const zig = fromValues([1, 2, 3, 4, 5, 6, 5.5, 7]); // 6 ups + 1 reversal in the last 7
 check("rule5 does NOT fire when the window has a reversal (no false trend)",
-    !evaluateRules(zig, computePhasedStatistics(zig, zig.length + 1)).some(r => r.firedRules.includes(5)));
+    !rulesOf(zig, computePhasedStatistics(zig, zig.length + 1)).some(r => r.firedRules.includes(5)));
 
 // rule8 requires strict 14-point alternation; one non-alternating step must not trip it.
 const alt = fromValues(Array.from({ length: 16 }, (_, k) => (k % 2 === 0 ? 1 : 2)));
 check("rule8 fires on a strict 14-point alternation",
-    evaluateRules(alt, computePhasedStatistics(alt, alt.length + 1)).some(r => r.firedRules.includes(8)));
+    rulesOf(alt, computePhasedStatistics(alt, alt.length + 1)).some(r => r.firedRules.includes(8)));
 const altBreak = fromValues([1, 2, 1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2, 1]); // the "2,2" breaks alternation
 check("rule8 does NOT fire when one step fails to alternate",
-    !evaluateRules(altBreak, computePhasedStatistics(altBreak, altBreak.length + 1)).some(r => r.firedRules.includes(8)));
+    !rulesOf(altBreak, computePhasedStatistics(altBreak, altBreak.length + 1)).some(r => r.firedRules.includes(8)));
 
 let threw = false;
 try {
-    evaluateRules([{ index: 2, label: "x", value: 1, movingRange: null, prevValue: null, direction: null, categoryIndex: 0 }] as any, onePh);
+    evaluateRules([{ index: 2, label: "x", value: 1, movingRange: null, prevValue: null, direction: null, categoryIndex: 0 }] as any, () => onePh.phase1);
 } catch { threw = true; }
 check("evaluateRules throws on non-contiguous input", threw);
 
+// chart-type seam: the individuals strategy owns phase resolution (calls resolveChangepoint) and
+// emits per-point limits + an MR companion. `step` has a clean changepoint at index 16.
+const stepModel = individualsStrategy.computeLimits(step, { opts: {}, changepoint: {} });
+check("individuals strategy resolves the changepoint into two phases",
+    !stepModel.singlePhase && stepModel.phaseOf!(step[14]) === 1 && stepModel.phaseOf!(step[15]) === 2,
+    { singlePhase: stepModel.singlePhase });
+check("individuals strategy emits per-point limits + MR companion aligned to points",
+    stepModel.perPoint.length === step.length && stepModel.companion?.kind === "mr" &&
+    stepModel.companion.value.length === step.length);
+
 // ============================================================ tooltip (m9/m13)
 
-const items = buildTooltipItems(pts[0], results, ph, fmt, "Month", "Rate", "Target");
+const items = buildTooltipItems(pts[0], results, phModel, fmt, "Month", "Rate", "Target");
 const byName = Object.fromEntries(items.map(i => [i.displayName, i.value]));
 check("tooltip axis label + fmt'd value", byName["Month"] === pts[0].label && byName["Rate"] === fmt(pts[0].value));
 check("Phase row omitted when single-phase", !items.some(i => i.displayName === "Phase"));
 check("tooltip center/UCL/LCL", byName["Center (x̄)"] === fmt(ph.phase1.xBar) && byName["UCL"] === fmt(ph.phase1.ucl) && byName["LCL"] === fmt(ph.phase1.lcl));
 
 const ph2 = computePhasedStatistics(pts, 7);
-const res2 = evaluateRules(pts, ph2);
+const ph2Model = modelFromPhased(pts, ph2);
+const res2 = rulesOf(pts, ph2);
 check("Phase row present + correct in two-phase",
-    buildTooltipItems(pts[0], res2, ph2, fmt, "Month", "Rate", "Target").find(i => i.displayName === "Phase")?.value === "1" &&
-    buildTooltipItems(pts[8], res2, ph2, fmt, "Month", "Rate", "Target").find(i => i.displayName === "Phase")?.value === "2");
+    buildTooltipItems(pts[0], res2, ph2Model, fmt, "Month", "Rate", "Target").find(i => i.displayName === "Phase")?.value === "1" &&
+    buildTooltipItems(pts[8], res2, ph2Model, fmt, "Month", "Rate", "Target").find(i => i.displayName === "Phase")?.value === "2");
 
 const ptWithTarget = { ...pts[0], target: 0.027 };
-check("tooltip target row labelled with targetName", buildTooltipItems(ptWithTarget, results, ph, fmt, "Month", "Rate", "FY Target").find(i => i.displayName === "FY Target")?.value === fmt(0.027));
-check("tooltip target row omitted when no target", !buildTooltipItems(pts[0], results, ph, fmt, "Month", "Rate", "FY Target").some(i => i.displayName === "FY Target"));
+check("tooltip target row labelled with targetName", buildTooltipItems(ptWithTarget, results, phModel, fmt, "Month", "Rate", "FY Target").find(i => i.displayName === "FY Target")?.value === fmt(0.027));
+check("tooltip target row omitted when no target", !buildTooltipItems(pts[0], results, phModel, fmt, "Month", "Rate", "FY Target").some(i => i.displayName === "FY Target"));
 
 // Use a fixture guaranteed to violate (out-of-limit spike) so this assertion actually runs.
 const spike = fromValues([10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 100]);
 const spikePh = computePhasedStatistics(spike, spike.length + 1);
-const spikeRes = evaluateRules(spike, spikePh);
+const spikeModel = modelFromPhased(spike, spikePh);
+const spikeRes = rulesOf(spike, spikePh);
 const spikeIdx = spikeRes.findIndex(r => r.violation);
 check("spike fixture produces a violation", spikeIdx >= 0, spikeRes.map(r => r.firedRules));
 const ruleNames = new Set(RULES.map(r => r.name));
-const spikeTip = buildTooltipItems(spike[spikeIdx], spikeRes, spikePh, fmt, "Month", "Rate", "Target");
+const spikeTip = buildTooltipItems(spike[spikeIdx], spikeRes, spikeModel, fmt, "Month", "Rate", "Target");
 // Each rule that fired on the point gets its own row: displayName = name, value = short tooltip text.
 const firedHere = spikeRes[spikeIdx].firedRules.map(id => RULES.find(r => r.id === id)!);
 check("violating point: one tooltip row per fired rule (name → tooltip text)",
     firedHere.length > 0 && firedHere.every(r =>
         spikeTip.some(i => i.displayName === r.name && i.value === r.tooltip)), spikeTip);
 check("clean point: no rule rows in the tooltip",
-    !buildTooltipItems(spike[0], spikeRes, spikePh, fmt, "Month", "Rate", "Target").some(i => ruleNames.has(i.displayName)));
+    !buildTooltipItems(spike[0], spikeRes, spikeModel, fmt, "Month", "Rate", "Target").some(i => ruleNames.has(i.displayName)));
 check("every rule has non-empty tooltip + description text",
     RULES.every(r => r.tooltip.length > 0 && r.description.length > 0));
 // No em/en dashes in user-facing rule text (tooltip + panel).
@@ -264,7 +284,8 @@ check("rule text has no em/en dashes",
     RULES.every(r => !/[—–]/.test(r.tooltip) && !/[—–]/.test(r.description)),
     RULES.filter(r => /[—–]/.test(r.tooltip) || /[—–]/.test(r.description)).map(r => r.name));
 
-const mrTip = buildMrTooltipItems(fromValues([10, 13, 9])[1], computePhasedStatistics(fromValues([10, 13, 9]), 4), fmt, "Month");
+const mrPts = fromValues([10, 13, 9]);
+const mrTip = buildMrTooltipItems(mrPts[1], modelFromPhased(mrPts, computePhasedStatistics(mrPts, 4)), fmt, "Month");
 const mrTipBy = Object.fromEntries(mrTip.map(i => [i.displayName, i.value]));
 check("MR tooltip: moving range value", mrTipBy["Moving range"] === fmt(3));
 
@@ -273,6 +294,11 @@ check("MR tooltip: moving range value", mrTipBy["Moving range"] === fmt(3));
 check("toDataLabelMode passthrough + guard", toDataLabelMode("all") === "all" && toDataLabelMode("violations") === "violations" && toDataLabelMode("xyz") === "off");
 check("toSidePosition passthrough + guard",
     toSidePosition("left") === "left" && toSidePosition("right") === "right" && toSidePosition("xyz") === "right");
+check("toChartType passthrough + guard",
+    toChartType("individuals") === "individuals" && toChartType("xyz") === "individuals");
+// rule applicability: user-enabled ∩ chart-type-applicable
+check("applicableEnabledRules intersects enabled with applicable",
+    eq([...applicableEnabledRules(new Set([1, 2, 3, 8]), new Set([1, 3, 4]))].sort(), [1, 3]));
 check("toMrChartOptions clamps", toMrChartOptions(true, 0.05).ratio === 0.1 && toMrChartOptions(true, 0.8).ratio === 0.5 && toMrChartOptions(false, 0.25).ratio === 0.25);
 
 // ============================================================ theme (m12)

@@ -8,8 +8,9 @@
 import * as d3 from "d3";
 import type powerbi from "powerbi-visuals-api";
 import { ITooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
-import { DataPoint, PhasedStatistics, PointRuleResult, SpcStatistics, ChartColors } from "../spc/types";
-import { splitPhases, PhaseSegment, statsForPoint, D4, evaluateMrViolations } from "../spc/statistics";
+import { DataPoint, PointRuleResult, SpcStatistics, ChartColors } from "../spc/types";
+import { PhaseSegment } from "../spc/statistics";
+import { LimitModel, CompanionModel, CompanionPoint, companionViolations } from "../spc/chartType";
 import { buildTooltipItems, buildMrTooltipItems } from "../tooltip";
 import { buildLegendItems, LegendItem, LegendKey } from "../legend";
 import { ChartColorSet } from "../theme";
@@ -36,7 +37,7 @@ export type DataLabelMode = "off" | "all" | "violations";
 
 export interface ChartModel {
     points: DataPoint[];
-    phased: PhasedStatistics;
+    limits: LimitModel;
     results: PointRuleResult[];
     measureName?: string;
     colors?: ChartColors;
@@ -143,6 +144,8 @@ interface SegmentPixels {
     s: SpcStatistics;
     x0: number;
     x1: number;
+    /** This segment's companion (dispersion) limits, for the MR/R/s panel. */
+    companion?: CompanionPoint;
 }
 
 export function renderChart(
@@ -153,7 +156,7 @@ export function renderChart(
     const prevPanel = svg.select<HTMLElement>(".spc-rule-panel").node();
     const prevPanelScroll = prevPanel ? prevPanel.scrollTop : 0;
     svg.selectAll("*").remove();
-    const { points, phased, results, measureName } = model;
+    const { points, limits, results, measureName } = model;
     if (points.length === 0 || width <= 0 || height <= 0) return;
     const formatValue = services?.formatValue ?? ((n: number) => String(n));
 
@@ -175,7 +178,7 @@ export function renderChart(
 
     // Target/phase flags are needed early (they gate the legend entries + the Y-domain expansion).
     const drawTarget = model.showTargetLine !== false && points.some(p => p.target != null);
-    const hasPhaseChange = !phased.singlePhase && model.showPhaseChangeLine !== false;
+    const hasPhaseChange = !limits.singlePhase && model.showPhaseChangeLine !== false;
 
     // Reference key (m16): build the conditional items, then reserve an edge strip for it (the
     // legend is drawn on `svg`, outside `g`, so its text color is passed directly — not via the
@@ -251,20 +254,26 @@ export function renderChart(
     const dataMax = d3.max(points, p => p.value) ?? 0;
     const targetMin = drawTarget ? d3.min(points, p => p.target ?? undefined) : undefined;
     const targetMax = drawTarget ? d3.max(points, p => p.target ?? undefined) : undefined;
-    const lower = Math.min(phased.phase1.lcl, phased.phase2.lcl, dataMin, targetMin ?? Infinity);
-    const upper = Math.max(phased.phase1.ucl, phased.phase2.ucl, dataMax, targetMax ?? -Infinity);
+    // Span every point's own limits (per-point — generalizes the old two-phase min/max, and is
+    // correct for varying-limit charts where limits step per point).
+    const limMin = d3.min(limits.perPoint, s => s.lcl) ?? 0;
+    const limMax = d3.max(limits.perPoint, s => s.ucl) ?? 0;
+    const lower = Math.min(limMin, dataMin, targetMin ?? Infinity);
+    const upper = Math.max(limMax, dataMax, targetMax ?? -Infinity);
     // Relative pad; on a flat domain (upper === lower) scale the pad to the value's magnitude
     // (an absolute 1 crushes small-magnitude flat data — e.g. a constant 2.5% rate).
     const pad = upper > lower ? (upper - lower) * 0.05 : (Math.abs(upper) * 0.1 || 1);
     const y = d3.scaleLinear().domain([lower - pad, upper + pad]).range([mainH, 0]);
 
     // Phase segments → pixel x-ranges; adjacent phases meet at the boundary midpoint.
-    const segments: PhaseSegment[] = splitPhases(points, phased);
+    const segments: PhaseSegment[] = limits.segments;
     const midX = (i1: number, i2: number) => ((x(i1) ?? 0) + (x(i2) ?? 0)) / 2;
     const segPixels: SegmentPixels[] = segments.map((seg, i) => ({
         s: seg.stats,
         x0: i === 0 ? 0 : midX(seg.startIndex - 1, seg.startIndex),
         x1: i === segments.length - 1 ? innerW : midX(seg.endIndex, seg.endIndex + 1),
+        // Companion limits are constant within a phase → read the segment's first point.
+        companion: limits.companion?.limits[seg.startIndex - 1],
     }));
 
     // Zone fills are translucent → illegible in high contrast; drop them (labels still drawn).
@@ -272,7 +281,7 @@ export function renderChart(
     drawLimitLines(g, segPixels, y, colors);
 
     // Reference-layer annotations: behind the data line/markers they annotate.
-    if (model.showPhaseChangeLine !== false && !phased.singlePhase && segPixels.length > 1) {
+    if (model.showPhaseChangeLine !== false && !limits.singlePhase && segPixels.length > 1) {
         drawPhaseChangeLine(g, segPixels[1].x0, mainH, model.phaseChangeColor || DEFAULT_PHASE_CHANGE_COLOR);
     }
     if (drawTarget) {
@@ -306,7 +315,7 @@ export function renderChart(
 
     const labelMode = model.dataLabelMode ?? "off";
     if (labelMode !== "off") {
-        drawDataLabels(g, points, results, phased, xPos, y, mainH, formatValue, labelMode,
+        drawDataLabels(g, points, results, limits, xPos, y, mainH, formatValue, labelMode,
             model.dataLabelColor || DEFAULT_LABEL_COLOR);
     }
 
@@ -321,15 +330,15 @@ export function renderChart(
     }
 
     const markerSels: MarkerSel[] = [pointSel, violSel];
-    if (mrEnabled && mrH > 0) {
-        const mr = drawMrChart(g, points, phased, segPixels, x, xPos, mrTop, mrH, colors,
+    if (mrEnabled && mrH > 0 && limits.companion) {
+        const mr = drawMrChart(g, points, limits.companion, limits.singlePhase, segPixels, x, xPos, mrTop, mrH, colors,
             formatValue, model.showPhaseChangeLine !== false,
             model.phaseChangeColor || DEFAULT_PHASE_CHANGE_COLOR,
             model.pointShape, model.violationShape);
         markerSels.push(mr.pointSel, mr.violSel);
         if (services?.tooltip) {
             const axisName = services.axisName;
-            const mrCb = (p: DataPoint) => buildMrTooltipItems(p, phased, tooltipNumber, axisName);
+            const mrCb = (p: DataPoint) => buildMrTooltipItems(p, limits, tooltipNumber, axisName);
             services.tooltip.addTooltip(mr.pointSel, mrCb);
             services.tooltip.addTooltip(mr.violSel, mrCb);
         }
@@ -496,7 +505,7 @@ function drawPhaseChangeLine(g: GSel, xBoundary: number, innerH: number, color: 
  * marker (above when above center, below when below) and the y is clamped in-bounds.
  */
 function drawDataLabels(
-    g: GSel, points: DataPoint[], results: PointRuleResult[], phased: PhasedStatistics,
+    g: GSel, points: DataPoint[], results: PointRuleResult[], limits: LimitModel,
     xPos: (p: DataPoint) => number, y: YScale, innerH: number,
     formatValue: (n: number) => string, mode: DataLabelMode, color: string
 ): void {
@@ -512,7 +521,7 @@ function drawDataLabels(
         .attr("y", p => {
             // Place the label on the OUTER side (away from the center line, where the data
             // line and neighbouring points cluster): above-center → above, below-center → below.
-            const aboveCenter = (p.value as number) >= statsForPoint(phased, p).xBar;
+            const aboveCenter = (p.value as number) >= limits.perPoint[p.index - 1].xBar;
             return clamp(y(p.value as number) + (aboveCenter ? -8 : 14));
         })
         .attr("text-anchor", "middle")
@@ -591,7 +600,7 @@ function tooltipCallback(
 ): (p: DataPoint) => VisualTooltipDataItem[] {
     const { formatExtra, axisName, measureName, targetName } = services;
     return (p: DataPoint) => [
-        ...buildTooltipItems(p, model.results, model.phased, tooltipNumber, axisName, measureName, targetName),
+        ...buildTooltipItems(p, model.results, model.limits, tooltipNumber, axisName, measureName, targetName),
         ...(p.tooltips ?? []).map(t => ({ displayName: t.displayName, value: formatExtra(t.value, t.format) })),
     ];
 }
@@ -697,7 +706,7 @@ function drawAxes(
  * bottom labelled X axis. Marks use the already-resolved palette (theme/HC apply).
  */
 function drawMrChart(
-    g: GSel, points: DataPoint[], phased: PhasedStatistics, segPixels: SegmentPixels[],
+    g: GSel, points: DataPoint[], companion: CompanionModel, singlePhase: boolean, segPixels: SegmentPixels[],
     x: d3.ScalePoint<number>, xPos: (p: DataPoint) => number, mrTop: number, mrH: number,
     colors: ChartColors, formatValue: (n: number) => string,
     showPhaseChange: boolean, phaseChangeColor: string,
@@ -705,16 +714,17 @@ function drawMrChart(
 ): { pointSel: MarkerSel; violSel: MarkerSel } {
     const mrG = g.append("g").attr("transform", `translate(0,${mrTop})`);
 
-    // Y domain: 0 .. max(UCL across phases, max moving range) + pad (so violations don't clip).
-    const maxUcl = d3.max(segPixels, s => D4 * s.s.mrBar) ?? 0;
-    const maxMr = d3.max(points, p => p.movingRange ?? undefined) ?? 0;
+    // Y domain: 0 .. max(companion UCL across phases, max companion value) + pad (so violations
+    // don't clip). All limits come from the CompanionModel — no reach into the primary phase stats.
+    const maxUcl = d3.max(segPixels, s => s.companion?.ucl ?? 0) ?? 0;
+    const maxMr = d3.max(companion.value, v => v ?? undefined) ?? 0;
     const upper = Math.max(maxUcl, maxMr);
     const pad = upper > 0 ? upper * 0.05 : 1; // all-zero MR (flat data) has no magnitude → 1
     const mrY = d3.scaleLinear().domain([0, upper + pad]).range([mrH, 0]);
 
-    // Stepped MR center + UCL per phase segment (reusing the shared x-ranges; LCL = 0 = baseline).
+    // Stepped companion center + UCL per phase segment (reusing the shared x-ranges; LCL = 0 baseline).
     for (const seg of segPixels) {
-        const lines: [number, string][] = [[seg.s.mrBar, colors.center], [D4 * seg.s.mrBar, colors.limit]];
+        const lines: [number, string][] = [[seg.companion?.center ?? 0, colors.center], [seg.companion?.ucl ?? 0, colors.limit]];
         for (const [val, color] of lines) {
             mrG.append("line")
                 .attr("x1", seg.x0).attr("x2", seg.x1)
@@ -724,7 +734,7 @@ function drawMrChart(
     }
 
     // Phase-change indicator, mirroring the individuals chart (the MR limits step here too).
-    if (showPhaseChange && !phased.singlePhase && segPixels.length > 1) {
+    if (showPhaseChange && !singlePhase && segPixels.length > 1) {
         drawPhaseChangeLine(mrG, segPixels[1].x0, mrH, phaseChangeColor);
     }
 
@@ -743,7 +753,7 @@ function drawMrChart(
         .attr("transform", p => `translate(${xPos(p)},${mrY(p.movingRange as number)})`)
         .attr("d", pointSymbol).attr("fill", colors.line);
 
-    const viol = evaluateMrViolations(points, phased);
+    const viol = companionViolations(companion);
     const violating = points.filter((_, i) => viol[i]);
     const marker = d3.symbol().type(symbolFor(violationShape, d3.symbolCircle)).size(100);
     const violSel = mrG.selectAll<SVGPathElement, DataPoint>("path.spc-mr-violation").data(violating).join("path")

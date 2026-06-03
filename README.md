@@ -32,7 +32,7 @@ src/
 ├── settings.ts      # format-pane model
 └── visual.ts        # IVisual entry point
 test/                # committed unit tests (run via npm test)
-docs/                # rule reference, target-measure patterns, edge-case checklist, AppSource/cert checklist
+docs/                # roadmap, rule reference, target-measure patterns, edge-case checklist, AppSource/cert checklist
 ```
 
 ## Tech
