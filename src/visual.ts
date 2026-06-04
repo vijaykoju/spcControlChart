@@ -105,7 +105,7 @@ export class Visual implements IVisual {
             const s = this.formattingSettings;
             const strategy = STRATEGIES[toChartType(String(s.chart.chartType.value.value))];
             // The full context (stats + changepoint + time-weighted params) is built up front because
-            // prepare, validate, and computeLimits all consume it.
+            // build and validate all consume it.
             const ctx = {
                 opts: toStatsOpts(s.controlLimits.sigmaMultiplier.value, s.controlLimits.floorLcl.value),
                 changepoint: toChangepointOptions(
@@ -122,11 +122,14 @@ export class Visual implements IVisual {
             };
             // Attribute charts need a Sample size (p/np/u) — prompt rather than render wrong limits.
             const missingRole = (strategy.requiredRoles ?? []).find(r => !roleBound(dataView, r));
-            // The strategy derives the plotted series (count/n for p/u, a smoothed value for EWMA/MA).
-            const points = strategy.prepare(rawPoints, ctx);
             // Gaps (blank-measure rows) are kept as slots, so length > 0 no longer implies drawable
             // data — require at least one real (non-null) value, else show the empty state.
-            if (!rawPoints.some(p => p.value !== null)) {
+            const hasData = rawPoints.some(p => p.value !== null);
+            // The strategy derives the plotted series AND its limits in one pass — but only once there
+            // is data and the required roles are bound, so build never runs on empty input.
+            const built = hasData && !missingRole ? strategy.build(rawPoints, ctx) : null;
+            const points = built?.points ?? [];
+            if (!hasData) {
                 renderMessage(this.svg, emptyMessage(dataView), width, height);
             } else if (missingRole) {
                 renderMessage(this.svg, `${chartTypeLabel(strategy.id)} needs a ${roleLabel(missingRole)} field`, width, height);
@@ -137,7 +140,7 @@ export class Visual implements IVisual {
                 // Per-type validation: subgroup size out of range, bad EWMA λ / MA window, etc.
                 renderMessage(this.svg, strategy.validate(points, ctx)!, width, height);
             } else {
-                const limits = strategy.computeLimits(points, ctx);
+                const limits = built!.limits; // non-null here (hasData && !missingRole)
                 // A chart type can only fire rules that apply to it.
                 const enabledRules = applicableEnabledRules(
                     toEnabledRules(s.rules.ruleToggles.map(t => t.value)), strategy.applicableRules);

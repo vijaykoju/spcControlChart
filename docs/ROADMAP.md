@@ -95,6 +95,15 @@ Two implications:
   (USL/LSL spec limits). **Decision:** likely a *separate visual* in this project rather than a mode
   of the control chart.
 
+## Tech debt (pay before Phase 4)
+
+- **Consolidate `prepare` + `computeLimits` → `build(raw, ctx)`.** The two-method strategy pipeline
+  makes derived-series charts (EWMA/MA/CUSUM) recompute their base stats (x̄/μ₀, σ) in both halves and
+  carries a hidden ordering contract. A single `build` computes them once. Pure refactor, no version
+  bump; staged behind a shim to keep the suite green. Design:
+  [`build-consolidation-design.md`](build-consolidation-design.md). Best done before Phase 4 piles on
+  a fifth family.
+
 ## Future ideas (unscheduled)
 
 Charting features worth doing eventually; not tied to a phase.

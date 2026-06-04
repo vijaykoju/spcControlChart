@@ -41,8 +41,8 @@ export interface DataPoint {
     count?: number | null;
     /** Subgroup charts: the subgroup's range (X̄-R) or std dev (X̄-s). null = blank. */
     spread?: number | null;
-    /** Time-weighted charts (EWMA/MA): the raw reading, preserved by `prepare` (which overwrites
-     *  `value` with the smoothed statistic) so `computeLimits` can recover x̄ / σ. */
+    /** Time-weighted charts (EWMA/MA/CUSUM): the raw reading, preserved by `build` (which overwrites
+     *  `value` with the smoothed/cumulative statistic) for the raw-reading overlay. */
     baseValue?: number | null;
 }
 

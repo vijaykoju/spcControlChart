@@ -73,14 +73,12 @@ export const xbarRStrategy: ChartStrategy = {
     id: "xbar-r", applicableRules: new Set([1, 2, 3, 4, 5, 6, 7, 8]), zonesMeaningful: true,
     requiredRoles: ["spread", "sampleSize"],
     validate: VALIDATE,
-    prepare: raw => raw,
-    computeLimits: (points, ctx) => subgroupModel(points, ctx, "r"),
+    build: (raw, ctx) => ({ points: raw, limits: subgroupModel(raw, ctx, "r") }),
 };
 
 export const xbarSStrategy: ChartStrategy = {
     id: "xbar-s", applicableRules: new Set([1, 2, 3, 4, 5, 6, 7, 8]), zonesMeaningful: true,
     requiredRoles: ["spread", "sampleSize"],
     validate: VALIDATE,
-    prepare: raw => raw,
-    computeLimits: (points, ctx) => subgroupModel(points, ctx, "s"),
+    build: (raw, ctx) => ({ points: raw, limits: subgroupModel(raw, ctx, "s") }),
 };

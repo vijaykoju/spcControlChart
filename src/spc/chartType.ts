@@ -77,6 +77,12 @@ export interface ChartContext {
     cusumH?: number;
 }
 
+/** A strategy's full output: the plotted points and their limit model, produced together by build. */
+export interface BuiltChart {
+    points: DataPoint[];
+    limits: LimitModel;
+}
+
 export interface ChartStrategy {
     id: ChartType;
     /** Rule ids (1-8) valid for this chart type. Individuals = all 8. */
@@ -94,12 +100,12 @@ export interface ChartStrategy {
     /** Number-format string for the plotted statistic, overriding the measure's format (the count's
      *  integer format would render a proportion as "0"). Falls back to the measure's format. */
     valueFormat?: string;
-    /** Derive the plotted series: `.value` becomes the plotted statistic (e.g. count/n for p/u, or a
-     *  smoothed value for EWMA/MA using ctx params); must preserve all other DataPoint fields.
-     *  Default: identity (individuals). */
-    prepare(raw: DataPoint[], ctx: ChartContext): DataPoint[];
-    /** Compute per-point limits (+ segments + companion) for the prepared points. */
-    computeLimits(points: DataPoint[], ctx: ChartContext): LimitModel;
+    /** Derive the plotted points AND their limits in one pass. `.value` becomes the plotted statistic
+     *  (e.g. count/n for p/u, a smoothed value for EWMA/MA); all other DataPoint fields are preserved.
+     *  Base stats (x̄/μ₀, σ) are computed once and shared between the series and the limits.
+     *  MUST be total: never throw on all-gap or invalid-param input (the caller gates it past empty /
+     *  missing-role, but the all-null and validate gates run on its output). */
+    build(raw: DataPoint[], ctx: ChartContext): BuiltChart;
 }
 
 /** Adapt a LimitModel to the rule engine's accessor. Relies on the contiguous 1-based index that

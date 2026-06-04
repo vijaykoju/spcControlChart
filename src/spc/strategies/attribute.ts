@@ -47,8 +47,8 @@ const mult = (ctx: { opts: { sigmaMultiplier?: number } }) => ctx.opts.sigmaMult
 export const pStrategy: ChartStrategy = {
     id: "p", applicableRules: new Set([1, 4]), zonesMeaningful: true, requiredRoles: ["sampleSize"],
     valueLabel: "Proportion", valueFormat: "0.0%",
-    prepare: ratioPrepare,
-    computeLimits(points, ctx) {
+    build(raw, ctx) {
+        const points = ratioPrepare(raw);
         const reals = real(points).filter(validN);
         const totalN = sum(reals.map(p => p.sampleSize as number));
         const pBar = totalN > 0 ? sum(reals.map(p => p.count as number)) / totalN : 0;
@@ -56,7 +56,7 @@ export const pStrategy: ChartStrategy = {
             const n = p.sampleSize as number;
             return n > 0 && pBar > 0 && pBar < 1 ? Math.sqrt((pBar * (1 - pBar)) / n) : 0;
         };
-        return attributeModel(points, mult(ctx), pBar, sigmaAt, true);
+        return { points, limits: attributeModel(points, mult(ctx), pBar, sigmaAt, true) };
     },
 };
 
@@ -64,8 +64,8 @@ export const pStrategy: ChartStrategy = {
 export const uStrategy: ChartStrategy = {
     id: "u", applicableRules: new Set([1, 4]), zonesMeaningful: true, requiredRoles: ["sampleSize"],
     valueLabel: "Defects per unit",
-    prepare: ratioPrepare,
-    computeLimits(points, ctx) {
+    build(raw, ctx) {
+        const points = ratioPrepare(raw);
         const reals = real(points).filter(validN);
         const totalN = sum(reals.map(p => p.sampleSize as number));
         const uBar = totalN > 0 ? sum(reals.map(p => p.count as number)) / totalN : 0;
@@ -73,15 +73,15 @@ export const uStrategy: ChartStrategy = {
             const n = p.sampleSize as number;
             return n > 0 && uBar > 0 ? Math.sqrt(uBar / n) : 0;
         };
-        return attributeModel(points, mult(ctx), uBar, sigmaAt, true);
+        return { points, limits: attributeModel(points, mult(ctx), uBar, sigmaAt, true) };
     },
 };
 
 /** np-chart: center n·p̄ = mean count (constant n assumed); σ = √(np̄(1−p̄)). */
 export const npStrategy: ChartStrategy = {
     id: "np", applicableRules: new Set([1, 4]), zonesMeaningful: true, requiredRoles: ["sampleSize"],
-    prepare: raw => raw.map(basePrepare), // np plots the count itself
-    computeLimits(points, ctx) {
+    build(raw, ctx) {
+        const points = raw.map(basePrepare); // np plots the count itself
         const reals = real(points);
         // np assumes a constant subgroup size; use the first real n. (A varying n means a p-chart
         // is the right tool — documented in docs/phase1-design.md.)
@@ -90,18 +90,18 @@ export const npStrategy: ChartStrategy = {
         const cBar = reals.length ? sum(reals.map(p => p.value as number)) / reals.length : 0; // = np̄
         const pBar = n > 0 ? cBar / n : 0;
         const sigma = Math.sqrt(Math.max(0, cBar * (1 - pBar)));
-        return attributeModel(points, mult(ctx), cBar, () => sigma, false);
+        return { points, limits: attributeModel(points, mult(ctx), cBar, () => sigma, false) };
     },
 };
 
 /** c-chart: center c̄ = mean count; σ = √c̄ (constant). No sample size needed. */
 export const cStrategy: ChartStrategy = {
     id: "c", applicableRules: new Set([1, 4]), zonesMeaningful: true,
-    prepare: raw => raw.map(basePrepare),
-    computeLimits(points, ctx) {
+    build(raw, ctx) {
+        const points = raw.map(basePrepare);
         const reals = real(points);
         const cBar = reals.length ? sum(reals.map(p => p.value as number)) / reals.length : 0;
         const sigma = Math.sqrt(Math.max(0, cBar));
-        return attributeModel(points, mult(ctx), cBar, () => sigma, false);
+        return { points, limits: attributeModel(points, mult(ctx), cBar, () => sigma, false) };
     },
 };
