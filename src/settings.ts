@@ -17,9 +17,13 @@ import TextInput = formattingSettings.TextInput;
 
 const Min = powerbi.visuals.ValidatorType.Min;
 
-/** Chart-type options (values must match ChartType / toChartType). Phase 0 ships one. */
+/** Chart-type options (values must match ChartType / toChartType). */
 const CHART_TYPE_ITEMS: powerbi.IEnumMember[] = [
     { value: "individuals", displayName: "Individuals (X-mR)" },
+    { value: "p", displayName: "p (proportion defective)" },
+    { value: "np", displayName: "np (number defective)" },
+    { value: "c", displayName: "c (count of defects)" },
+    { value: "u", displayName: "u (defects per unit)" },
 ];
 
 /** Marker shape options (keys must match the SYMBOLS map in chart.ts). */

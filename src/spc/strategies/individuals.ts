@@ -26,6 +26,7 @@ export function modelFromPhased(points: DataPoint[], phased: PhasedStatistics): 
         companion,
         phaseOf: p => (p.index < phased.changeAt ? 1 : 2),
         singlePhase: phased.singlePhase,
+        varyingLimits: false,
     };
 }
 
@@ -33,6 +34,7 @@ export const individualsStrategy: ChartStrategy = {
     id: "individuals",
     applicableRules: new Set([1, 2, 3, 4, 5, 6, 7, 8]),
     zonesMeaningful: true,
+    prepare: raw => raw,
     computeLimits(points, ctx: ChartContext): LimitModel {
         const changeAt = resolveChangepoint(points, ctx.changepoint);
         return modelFromPhased(points, computePhasedStatistics(points, changeAt, ctx.opts));

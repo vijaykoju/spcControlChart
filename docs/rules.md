@@ -182,6 +182,10 @@ non-alternating step. Direction-only, so phase-independent.
   contribution to the violation flag (and from the tooltip and Rule Reference panel).
 - **Multiple rules** can fire on the same point; the tooltip shows one row per fired rule (its name
   and reason).
+- **Rules vary by chart type.** The individuals (X-mR) chart uses all 8. **Attribute charts (p, np,
+  c, u) use only {1 Beyond, 4 Run}** by default: their binomial/Poisson spread is skewed, so the
+  Zone A/B rules' ±1σ/±2σ probability interpretation (which assumes normality) doesn't hold — they
+  are excluded to avoid mislabeled signals. The dispersion companion (MR) flags beyond-limit only.
 - **Divergence from the source dashboard:** Rules 2, 3, 5, and 8 were tightened from the original DAX
   measures so the violation lands on the point that actually breaks the pattern (and so a single
   reversal/non-alternating step no longer trips the trend/over-control rules). On data with these

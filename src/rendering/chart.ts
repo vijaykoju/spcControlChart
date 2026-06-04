@@ -277,8 +277,14 @@ export function renderChart(
     }));
 
     // Zone fills are translucent → illegible in high contrast; drop them (labels still drawn).
-    if (showZones && !hc) drawZones(g, segPixels, y, colors);
-    drawLimitLines(g, segPixels, y, colors);
+    // Varying-limit charts (p/u) step per point; constant charts use the per-segment path.
+    if (limits.varyingLimits) {
+        if (showZones && !hc) drawSteppedZones(g, points, limits.perPoint, xPos, y, colors);
+        drawSteppedLimits(g, points, limits.perPoint, xPos, y, colors);
+    } else {
+        if (showZones && !hc) drawZones(g, segPixels, y, colors);
+        drawLimitLines(g, segPixels, y, colors);
+    }
 
     // Reference-layer annotations: behind the data line/markers they annotate.
     if (model.showPhaseChangeLine !== false && !limits.singlePhase && segPixels.length > 1) {
@@ -474,6 +480,45 @@ function drawLimitLines(g: GSel, segs: SegmentPixels[], y: YScale, colors: Chart
         hline(seg, seg.s.ucl, colors.limit);
         hline(seg, seg.s.lcl, colors.limit);
     }
+}
+
+/**
+ * Stepped center/UCL/LCL for varying-limit charts (p, u): each point's limit drawn as a step
+ * centered on its marker (`d3.curveStep` steps at the inter-point midpoints, so a limit lines up
+ * under its point). Breaks at gaps via `.defined`. Limits indexed by point (perPoint aligned 1-based).
+ */
+function drawSteppedLimits(
+    g: GSel, points: DataPoint[], perPoint: SpcStatistics[],
+    xPos: (p: DataPoint) => number, y: YScale, colors: ChartColors
+): void {
+    const stepped = (pick: (s: SpcStatistics) => number, color: string) => {
+        const line = d3.line<DataPoint>().defined(p => p.value !== null).curve(d3.curveStep)
+            .x(xPos).y(p => y(pick(perPoint[p.index - 1])));
+        g.append("path").datum(points).attr("d", line)
+            .attr("fill", "none").attr("stroke", color).attr("stroke-width", 1.5).attr("stroke-dasharray", "6 4");
+    };
+    stepped(s => s.xBar, colors.center);
+    stepped(s => s.ucl, colors.limit);
+    stepped(s => s.lcl, colors.limit);
+}
+
+/** Stepped zone bands for varying-limit charts — `d3.area` step-curves between per-point boundaries. */
+function drawSteppedZones(
+    g: GSel, points: DataPoint[], perPoint: SpcStatistics[],
+    xPos: (p: DataPoint) => number, y: YScale, colors: ChartColors
+): void {
+    const band = (lo: (s: SpcStatistics) => number, hi: (s: SpcStatistics) => number, color: string, opacity: number) => {
+        const area = d3.area<DataPoint>().defined(p => p.value !== null).curve(d3.curveStep)
+            .x(xPos)
+            .y0(p => y(lo(perPoint[p.index - 1])))
+            .y1(p => y(hi(perPoint[p.index - 1])));
+        g.append("path").datum(points).attr("d", area).attr("fill", color).attr("opacity", opacity);
+    };
+    band(s => s.zoneBLower, s => s.zoneBUpper, colors.zoneC, 0.18);
+    band(s => s.zoneBUpper, s => s.zoneAUpper, colors.zoneB, 0.14);
+    band(s => s.zoneALower, s => s.zoneBLower, colors.zoneB, 0.14);
+    band(s => s.zoneAUpper, s => s.ucl, colors.zoneA, 0.12);
+    band(s => s.lcl, s => s.zoneALower, colors.zoneA, 0.12);
 }
 
 /** Stepped target reference line; breaks across points with no target (`.defined`). */

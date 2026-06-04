@@ -11,6 +11,7 @@ import { buildDataPoints, computePhasedStatistics, mrLimits, D4 } from "../src/s
 import { detectChangepoint, resolveChangepoint } from "../src/spc/changepoint";
 import { evaluateRules, RULES } from "../src/spc/rules";
 import { modelFromPhased, individualsStrategy } from "../src/spc/strategies/individuals";
+import { pStrategy, npStrategy, cStrategy, uStrategy } from "../src/spc/strategies/attribute";
 import { limitsFromModel, companionViolations } from "../src/spc/chartType";
 import { DataPoint, PhasedStatistics } from "../src/spc/types";
 import { buildTooltipItems, buildMrTooltipItems } from "../src/tooltip";
@@ -242,6 +243,55 @@ check("individuals strategy emits per-point limits + MR companion aligned to poi
     stepModel.perPoint.length === step.length && stepModel.companion?.kind === "mr" &&
     stepModel.companion.value.length === step.length);
 
+// ============================================================ attribute charts (Phase 1)
+const attr = (strategy: typeof pStrategy, values: (number | null)[], sizes?: (number | null)[]) => {
+    const raw = buildDataPoints(values.map((v, i) => ({ label: "m" + i, value: v, categoryIndex: i, sampleSize: sizes ? sizes[i] : undefined })));
+    const pts = strategy.prepare(raw);
+    return { pts, model: strategy.computeLimits(pts, { opts: {} }) };
+};
+const near = (a: number, b: number) => Math.abs(a - b) < 1e-3;
+
+// c-chart: c̄ = 2, σ = √2, LCL floored at 0; constant limits, no companion.
+const cRes = attr(cStrategy, [2, 2, 2, 2]);
+check("c-chart: center c̄ + √c̄ limits, floored LCL",
+    near(cRes.model.perPoint[0].xBar, 2) && near(cRes.model.perPoint[0].ucl, 2 + 3 * Math.SQRT2) &&
+    cRes.model.perPoint[0].lcl === 0 && cRes.model.varyingLimits === false && cRes.model.companion === null);
+
+// p-chart: p̄ = 0.1; per-point limits differ with n (varying).
+const pRes = attr(pStrategy, [5, 10], [100, 50]);
+check("p-chart: plotted value = count/n", near(pRes.pts[0].value as number, 0.05) && near(pRes.pts[1].value as number, 0.2));
+check("p-chart: p̄ + per-point varying limits",
+    near(pRes.model.perPoint[0].xBar, 0.1) && near(pRes.model.perPoint[0].ucl, 0.19) &&
+    near(pRes.model.perPoint[1].ucl, 0.227279) && pRes.model.varyingLimits === true);
+
+// np-chart: constant n; center = mean count = np̄; σ = √(np̄(1−p̄)).
+const npRes = attr(npStrategy, [2, 4, 3, 3], [50, 50, 50, 50]);
+check("np-chart: center np̄ + √(np̄(1−p̄)) constant limits",
+    near(npRes.model.perPoint[0].xBar, 3) && near(npRes.model.perPoint[0].ucl, 3 + 3 * Math.sqrt(3 * 0.94)) &&
+    npRes.model.varyingLimits === false && (npRes.pts[0].value as number) === 2);
+
+// u-chart: ū = 30/9; σᵢ = √(ū/nᵢ) varies.
+const uRes = attr(uStrategy, [10, 20], [5, 4]);
+check("u-chart: ū + per-point √(ū/nᵢ) limits",
+    near(uRes.model.perPoint[0].xBar, 30 / 9) && near(uRes.model.perPoint[0].ucl, 30 / 9 + 3 * Math.sqrt((30 / 9) / 5)) &&
+    uRes.model.varyingLimits === true);
+
+// nᵢ ≤ 0 → gap; limits stay finite (no NaN/Infinity corrupting the Y-scale).
+const pGap = attr(pStrategy, [5, 3], [100, 0]);
+check("p-chart: nᵢ ≤ 0 is a gap, limits finite",
+    pGap.pts[1].value === null && Number.isFinite(pGap.model.perPoint[1].ucl) && near(pGap.model.perPoint[0].xBar, 0.05));
+
+check("attribute prepare preserves categoryIndex + sets raw count", pRes.pts[0].categoryIndex === 0 && pRes.pts[0].count === 5);
+check("attribute applicableRules = {1,4}",
+    eq([...applicableEnabledRules(new Set([1, 2, 3, 4, 5]), pStrategy.applicableRules)].sort(), [1, 4]));
+
+// end-to-end: a p-chart point beyond its per-point UCL trips Beyond Limits; in-control points clean.
+const pViol = attr(pStrategy, [15, 15, 15, 50], [100, 100, 100, 100]);
+const pViolRes = evaluateRules(pViol.pts, limitsFromModel(pViol.model), pStrategy.applicableRules);
+check("p-chart: point beyond per-point UCL fires rule 1; others clean",
+    pViolRes[3].firedRules.includes(1) && !pViolRes[0].violation && !pViolRes[1].violation && !pViolRes[2].violation,
+    pViolRes.map(r => r.firedRules));
+
 // ============================================================ tooltip (m9/m13)
 
 const items = buildTooltipItems(pts[0], results, phModel, fmt, "Month", "Rate", "Target");
@@ -295,7 +345,8 @@ check("toDataLabelMode passthrough + guard", toDataLabelMode("all") === "all" &&
 check("toSidePosition passthrough + guard",
     toSidePosition("left") === "left" && toSidePosition("right") === "right" && toSidePosition("xyz") === "right");
 check("toChartType passthrough + guard",
-    toChartType("individuals") === "individuals" && toChartType("xyz") === "individuals");
+    toChartType("individuals") === "individuals" && toChartType("p") === "p" &&
+    toChartType("u") === "u" && toChartType("xyz") === "individuals");
 // rule applicability: user-enabled ∩ chart-type-applicable
 check("applicableEnabledRules intersects enabled with applicable",
     eq([...applicableEnabledRules(new Set([1, 2, 3, 8]), new Set([1, 3, 4]))].sort(), [1, 3]));

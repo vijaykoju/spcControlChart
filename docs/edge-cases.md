@@ -34,3 +34,8 @@ checklist covers the **rendering** edges the unit tests can't exercise. Import t
 | 20 | **Rule reference + high contrast** | Panel text + divider use the HC foreground; legible (no filled background to fight the theme). |
 | 21 | **Rule reference + all rules disabled** | Nothing renders (no enabled rules to list); no error. |
 | 22 | **Export to PDF / PowerPoint with the panel on** | Panel renders in the exported output (it's an HTML `foreignObject` layer — confirm it isn't blank in the export). |
+| 23 | **Chart type = p / u** (Chart ▸ Chart type) with **Count** + **Sample size** bound | Plots `count/n`; control limits **step per point** (varying n), centered under each marker; no MR panel; rules limited to Beyond + Run. |
+| 24 | **Chart type = np / c** | Constant limits (single segment), no MR panel. np/c assume constant n / area. |
+| 25 | **Attribute chart missing Sample size** (p/np/u) | Empty-state prompt ("p-chart needs a Sample size field"); no error, no wrong limits. |
+| 26 | **Attribute chart with a 0 / blank sample size row** | That row is a **gap** (no marker, limits stay finite — no NaN/Infinity breaking the Y-scale). |
+| 27 | **Switch chart type back to Individuals** | Renders identically to before (X-mR + MR panel); the Sample size binding is ignored. |

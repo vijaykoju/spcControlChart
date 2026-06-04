@@ -35,6 +35,10 @@ export interface DataPoint {
     categoryIndex: number;
     /** Power BI selection id for cross-filtering; attached in visual.ts (interaction-only). */
     identity?: powerbi.visuals.ISelectionId;
+    /** Attribute charts: subgroup size / units / area of opportunity (nᵢ). null/≤0 → gap. */
+    sampleSize?: number | null;
+    /** Attribute charts: raw defect/defective count, preserved by `prepare` so the center is exact. */
+    count?: number | null;
 }
 
 /** Control-chart statistics for one phase (or the whole-dataset fallback). */

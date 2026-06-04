@@ -27,7 +27,7 @@ function floorAtZero(value: number): number {
  * Input is assumed already sorted ascending by date.
  */
 export function buildDataPoints(
-    raw: { label: string; value: number | null; tooltips?: TooltipField[]; target?: number | null; categoryIndex: number }[]
+    raw: { label: string; value: number | null; tooltips?: TooltipField[]; target?: number | null; sampleSize?: number | null; categoryIndex: number }[]
 ): DataPoint[] {
     // Input is in observation order (extractData sorts date/number axes; text axes keep delivered
     // order). EVERY row is kept as a slot, including blank-measure rows (value === null = a gap):
@@ -41,7 +41,7 @@ export function buildDataPoints(
         const movingRange = realPair ? Math.abs((r.value as number) - (prev as number)) : null;
         const direction = !realPair ? null
             : (r.value as number) > (prev as number) ? 1 : (r.value as number) < (prev as number) ? -1 : 0;
-        return { index: i + 1, label: r.label, value: r.value, movingRange, prevValue, direction, tooltips: r.tooltips, target: r.target, categoryIndex: r.categoryIndex };
+        return { index: i + 1, label: r.label, value: r.value, movingRange, prevValue, direction, tooltips: r.tooltips, target: r.target, sampleSize: r.sampleSize, categoryIndex: r.categoryIndex };
     });
 }
 
@@ -64,7 +64,7 @@ export interface StatsOptions {
  * Zones are thirds of the control-limit band: zoneB at mult/3·σ, zoneA at 2·mult/3·σ,
  * limit at mult·σ. At mult = 3 these are exactly 1σ/2σ/3σ.
  */
-function limitsFrom(
+export function limitsFrom(
     xBar: number, mrBar: number, sigma: number, mult: number, floorLcl: boolean
 ): SpcStatistics {
     const floor = floorLcl ? floorAtZero : (v: number) => v;

@@ -42,6 +42,18 @@ function emptyMessage(dataView: DataView | undefined): string {
     return "No valid data points";
 }
 
+/** True when a values column is bound to the given role (for required-role validation). */
+function roleBound(dataView: DataView | undefined, role: string): boolean {
+    return !!dataView?.categorical?.values?.some(v => v.source?.roles?.[role]);
+}
+
+const CHART_TYPE_LABELS: Record<string, string> = {
+    individuals: "Individuals chart", p: "p-chart", np: "np-chart", c: "c-chart", u: "u-chart",
+};
+const chartTypeLabel = (id: string) => CHART_TYPE_LABELS[id] ?? "This chart";
+const ROLE_LABELS: Record<string, string> = { sampleSize: "Sample size" };
+const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
+
 export class Visual implements IVisual {
     private events: IVisualEventService;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
@@ -83,11 +95,23 @@ export class Visual implements IVisual {
             const { width, height } = options.viewport;
             this.svg.attr("width", width).attr("height", height);
 
-            const points = dataView ? buildDataPoints(extractSeries(dataView)) : [];
-            // Gaps (blank-measure rows) are kept as slots, so points.length > 0 no longer implies
-            // drawable data — require at least one real (non-null) value, else show the empty state.
-            if (points.some(p => p.value !== null)) {
-                const s = this.formattingSettings;
+            const rawPoints = dataView ? buildDataPoints(extractSeries(dataView)) : [];
+            const s = this.formattingSettings;
+            const strategy = STRATEGIES[toChartType(String(s.chart.chartType.value.value))];
+            // Attribute charts need a Sample size (p/np/u) — prompt rather than render wrong limits.
+            const missingRole = (strategy.requiredRoles ?? []).find(r => !roleBound(dataView, r));
+            // The strategy derives the plotted series (e.g. count/n for p/u, gapping invalid n).
+            const points = strategy.prepare(rawPoints);
+            // Gaps (blank-measure rows) are kept as slots, so length > 0 no longer implies drawable
+            // data — require at least one real (non-null) value, else show the empty state.
+            if (!rawPoints.some(p => p.value !== null)) {
+                renderMessage(this.svg, emptyMessage(dataView), width, height);
+            } else if (missingRole) {
+                renderMessage(this.svg, `${chartTypeLabel(strategy.id)} needs a ${roleLabel(missingRole)} field`, width, height);
+            } else if (!points.some(p => p.value !== null)) {
+                // e.g. a p/u chart whose sample sizes are all ≤ 0 / blank → every point gapped.
+                renderMessage(this.svg, "No valid sample sizes", width, height);
+            } else {
                 const cp = toChangepointOptions(
                     s.phaseDetection.enableDetection.value,
                     s.phaseDetection.significanceThreshold.value,
@@ -97,22 +121,22 @@ export class Visual implements IVisual {
                 );
                 const statsOpts = toStatsOpts(
                     s.controlLimits.sigmaMultiplier.value, s.controlLimits.floorLcl.value);
-                // Chart-type strategy owns phase resolution + per-point limits (Phase 0: individuals).
-                const strategy = STRATEGIES[toChartType(String(s.chart.chartType.value.value))];
                 const limits = strategy.computeLimits(points, { opts: statsOpts, changepoint: cp });
-                // A chart type can only fire rules that apply to it (Phase 0 individuals = all 8).
+                // A chart type can only fire rules that apply to it.
                 const enabledRules = applicableEnabledRules(
                     toEnabledRules(s.rules.ruleToggles.map(t => t.value)), strategy.applicableRules);
                 const results = evaluateRules(points, limitsFromModel(limits), enabledRules);
                 const a = s.appearance;
 
-                // Measure/axis/target columns by role, for display names + the format string.
+                // Axis/tooltip name + number-format for the PLOTTED statistic: p/u plot a
+                // proportion/rate, so they override the count measure's name + (integer) format.
                 const values = dataView?.categorical?.values;
                 const measureCol = values?.find(v => v.source?.roles?.measure) ?? values?.[0];
-                const measureName = measureCol?.source?.displayName ?? "Value";
+                const measureName = strategy.valueLabel ?? measureCol?.source?.displayName ?? "Value";
+                const valueFormat = strategy.valueFormat ?? measureCol?.source?.format;
                 const axisName = dataView?.categorical?.categories?.[0]?.source?.displayName ?? "Axis";
                 const targetName = values?.find(v => v.source?.roles?.target)?.source?.displayName ?? "Target";
-                const services = this.buildServices(measureCol?.source?.format, axisName, measureName, targetName);
+                const services = this.buildServices(valueFormat, axisName, measureName, targetName);
                 const an = s.annotations;
                 const mr = toMrChartOptions(s.mrChart.showMrChart.value, s.mrChart.heightRatio.value);
                 const lg = s.legend;
@@ -210,8 +234,6 @@ export class Visual implements IVisual {
                     ruleReferenceTextColor: rr.textColor.value.value,
                     ruleReferenceItems,
                 }, width, height, services);
-            } else {
-                renderMessage(this.svg, emptyMessage(dataView), width, height);
             }
             this.events.renderingFinished(options);
         } catch (error) {

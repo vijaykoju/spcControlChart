@@ -13,7 +13,7 @@ import { DataPoint, SpcStatistics } from "./types";
 import { PhaseSegment, StatsOptions } from "./statistics";
 import { ChangepointOptions } from "./changepoint";
 
-export type ChartType = "individuals"; // Phase 1+ adds "p" | "np" | "c" | "u" | "xbar-r" | ...
+export type ChartType = "individuals" | "p" | "np" | "c" | "u"; // Phase 2+ adds "xbar-r" | "xbar-s" | ...
 
 /** Resolve the limits that apply to a given point — the single accessor the rule engine uses. */
 export type LimitsAccessor = (p: DataPoint) => SpcStatistics;
@@ -51,6 +51,8 @@ export interface LimitModel {
     singlePhase: boolean;
     /** Companion dispersion chart, or null (attribute charts have none). */
     companion: CompanionModel | null;
+    /** True when limits change per point (p/u) → stepped rendering; false → per-segment lines. */
+    varyingLimits: boolean;
 }
 
 /** Everything a strategy needs beyond the points. Opaque to the caller, so individuals-only
@@ -67,6 +69,17 @@ export interface ChartStrategy {
     applicableRules: Set<number>;
     /** Whether A/B/C zones are meaningful (drives zone shading + zone-rule eligibility). */
     zonesMeaningful: boolean;
+    /** Data roles that must be bound for this chart type (drives the empty-state prompt). */
+    requiredRoles?: ("sampleSize")[];
+    /** Axis/label name for the plotted statistic when it isn't the bound measure (p/u plot a
+     *  proportion/rate, not the count). Falls back to the measure's display name. */
+    valueLabel?: string;
+    /** Number-format string for the plotted statistic, overriding the measure's format (the count's
+     *  integer format would render a proportion as "0"). Falls back to the measure's format. */
+    valueFormat?: string;
+    /** Derive the plotted series: `.value` becomes the plotted statistic (e.g. count/n for p/u);
+     *  must preserve all other DataPoint fields. Default: identity (individuals). */
+    prepare(raw: DataPoint[]): DataPoint[];
     /** Compute per-point limits (+ segments + companion) for the prepared points. */
     computeLimits(points: DataPoint[], ctx: ChartContext): LimitModel;
 }
