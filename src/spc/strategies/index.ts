@@ -3,7 +3,7 @@ import { ChartType, ChartStrategy } from "../chartType";
 import { individualsStrategy } from "./individuals";
 import { pStrategy, npStrategy, cStrategy, uStrategy } from "./attribute";
 import { xbarRStrategy, xbarSStrategy } from "./subgroup";
-import { ewmaStrategy, maStrategy } from "./timeWeighted";
+import { ewmaStrategy, maStrategy, cusumStrategy } from "./timeWeighted";
 
 export const STRATEGIES: Record<ChartType, ChartStrategy> = {
     individuals: individualsStrategy,
@@ -15,4 +15,5 @@ export const STRATEGIES: Record<ChartType, ChartStrategy> = {
     "xbar-s": xbarSStrategy,
     ewma: ewmaStrategy,
     ma: maStrategy,
+    cusum: cusumStrategy,
 };

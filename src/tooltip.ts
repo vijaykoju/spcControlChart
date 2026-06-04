@@ -21,6 +21,18 @@ export function buildTooltipItems(
     targetName: string
 ): VisualTooltipDataItem[] {
     const s = limits.perPoint[point.index - 1];
+    // CUSUM: a two-arm chart — show both cumulative sums (C⁺ = value, C⁻ = −secondary) against the
+    // decision interval H (= the +H limit), instead of the single-series center/UCL/LCL rows.
+    if (limits.secondarySeries) {
+        const cMinus = limits.secondarySeries[point.index - 1];
+        const items: VisualTooltipDataItem[] = [
+            { displayName: axisName || "Axis", value: point.label },
+            { displayName: "CUSUM C⁺", value: fmt(point.value as number) },
+        ];
+        if (cMinus != null) items.push({ displayName: "CUSUM C⁻", value: fmt(-cMinus) });
+        items.push({ displayName: "Decision interval (H)", value: fmt(s.ucl) });
+        return items;
+    }
     // One row per fired rule (name → plain-language reason), so the tooltip explains *why* this
     // point is flagged right where the user is looking — not just which rule numbers tripped.
     const firedRules = (results[point.index - 1]?.firedRules ?? [])
