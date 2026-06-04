@@ -238,7 +238,7 @@ check("evaluateRules throws on non-contiguous input", threw);
 
 // chart-type seam: the individuals strategy owns phase resolution (calls resolveChangepoint) and
 // emits per-point limits + an MR companion. `step` has a clean changepoint at index 16.
-const stepModel = individualsStrategy.computeLimits(step, { opts: {}, changepoint: {} });
+const stepModel = individualsStrategy.build(step, { opts: {}, changepoint: {} }).limits;
 check("individuals strategy resolves the changepoint into two phases",
     !stepModel.singlePhase && stepModel.phaseOf!(step[14]) === 1 && stepModel.phaseOf!(step[15]) === 2,
     { singlePhase: stepModel.singlePhase });
@@ -249,8 +249,8 @@ check("individuals strategy emits per-point limits + MR companion aligned to poi
 // ============================================================ attribute charts (Phase 1)
 const attr = (strategy: typeof pStrategy, values: (number | null)[], sizes?: (number | null)[]) => {
     const raw = buildDataPoints(values.map((v, i) => ({ label: "m" + i, value: v, categoryIndex: i, sampleSize: sizes ? sizes[i] : undefined })));
-    const pts = strategy.prepare(raw, { opts: {} });
-    return { pts, model: strategy.computeLimits(pts, { opts: {} }) };
+    const { points: pts, limits: model } = strategy.build(raw, { opts: {} });
+    return { pts, model };
 };
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-3;
 
@@ -302,8 +302,8 @@ check("constants: out of range / non-integer -> null", constantsFor(1) === null 
 
 const sub = (strategy: typeof xbarRStrategy, means: number[], spreads: number[], m: number) => {
     const raw = buildDataPoints(means.map((v, i) => ({ label: "g" + i, value: v, categoryIndex: i, sampleSize: m, spread: spreads[i] })));
-    const pts = strategy.prepare(raw, { opts: {} });
-    return { pts, model: strategy.computeLimits(pts, { opts: {} }) };
+    const { points: pts, limits: model } = strategy.build(raw, { opts: {} });
+    return { pts, model };
 };
 
 // X̄-R, m=5: x̄̄=10.4, R̄=4.4, A2=0.577, D4=2.114, D3=0.
@@ -354,8 +354,8 @@ check("X̄-R validate: all-blank spread rejected", typeof xbarRStrategy.validate
 const tw = (strategy: typeof ewmaStrategy, values: (number | null)[], params: { ewmaLambda?: number; maWindow?: number; cusumK?: number; cusumH?: number }) => {
     const raw = buildDataPoints(values.map((v, i) => ({ label: "t" + i, value: v, categoryIndex: i })));
     const ctx = { opts: {}, ...params };
-    const pts = strategy.prepare(raw, ctx);
-    return { pts, model: strategy.computeLimits(pts, ctx) };
+    const { points: pts, limits: model } = strategy.build(raw, ctx);
+    return { pts, model };
 };
 
 // EWMA, λ=0.5, x̄=10: z = [10, 11, 9.5, 10.25, 9.625]; limits widen.
@@ -456,6 +456,21 @@ check("CUSUM: applicableRules empty (own H signal, no WE rules)",
 // end-to-end: the sustained up-shift drives C⁺ across H → an upper-arm signal exists.
 check("CUSUM: sustained up-shift signals the upper arm",
     secondaryBeyond(cu.pts, cu.model).some(s => s.upper));
+
+// ============================================================ build totality (consolidation refactor)
+// build now runs on inputs the old computeLimits was gated away from (all-gap, invalid params); it
+// must be total — finite limits, no throw — so the caller's gates can show a message instead.
+const allGapP = pStrategy.build(
+    buildDataPoints([5, 6, 7].map((v, i) => ({ label: "g" + i, value: v, categoryIndex: i, sampleSize: 0 }))),
+    { opts: {} });
+check("build totality: all-gap p-chart → finite limits, all-null points, no throw",
+    allGapP.points.every(p => p.value === null) &&
+    Number.isFinite(allGapP.limits.perPoint[0].ucl) && Number.isFinite(allGapP.limits.perPoint[0].lcl));
+const badM = xbarRStrategy.build(
+    buildDataPoints([10, 11].map((v, i) => ({ label: "g" + i, value: v, categoryIndex: i, sampleSize: 99, spread: 2 }))),
+    { opts: {} });
+check("build totality: out-of-range subgroup size → finite limits, no throw",
+    Number.isFinite(badM.limits.perPoint[0].ucl) && Number.isFinite(badM.limits.perPoint[0].lcl));
 
 // ============================================================ tooltip (m9/m13)
 
