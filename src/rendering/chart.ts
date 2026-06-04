@@ -42,10 +42,21 @@ export interface ChartModel {
     measureName?: string;
     colors?: ChartColors;
     showZones?: boolean;
+    /** Whether the chart type has meaningful A/B/C zones (false for EWMA/MA → suppresses shading). */
+    zonesMeaningful?: boolean;
+    /** Overlay the original individual readings (faint) behind the smoothed line — EWMA/MA only. */
+    showRawReadings?: boolean;
     showZoneLabels?: boolean;
     /** Symbol-shape keys (see SYMBOLS); fall back to circle / diamond. */
     pointShape?: string;
     violationShape?: string;
+    /** Data-point marker radius (px) and opacity (0–1) — applies to every chart type + the companion panel. */
+    pointSize?: number;
+    pointOpacity?: number;
+    /** Raw-reading overlay styling (EWMA/MA): dot color, opacity (0–1), radius (px). */
+    rawColor?: string;
+    rawOpacity?: number;
+    rawSize?: number;
     // --- Annotations (m10) ---
     showPhaseChangeLine?: boolean;
     phaseChangeColor?: string;
@@ -173,7 +184,9 @@ export function renderChart(
         zoneC: c?.zoneC || DEFAULT_COLORS.zoneC,
     };
     const hc = model.isHighContrast === true;
-    const showZones = model.showZones !== false;
+    // Zones are drawn only when the format toggle is on AND the chart type has meaningful zones
+    // (EWMA/MA/companion-style charts set zonesMeaningful = false).
+    const showZones = model.showZones !== false && model.zonesMeaningful !== false;
     const showZoneLabels = model.showZoneLabels !== false;
 
     // Target/phase flags are needed early (they gate the legend entries + the Y-domain expansion).
@@ -255,12 +268,17 @@ export function renderChart(
     const dataMax = d3.max(points, p => p.value) ?? 0;
     const targetMin = drawTarget ? d3.min(points, p => p.target ?? undefined) : undefined;
     const targetMax = drawTarget ? d3.max(points, p => p.target ?? undefined) : undefined;
+    // Raw-reading overlay (EWMA/MA): the original readings swing wider than the smoothed line, so
+    // include their range in the domain when drawn (only those charts set baseValue — no-op elsewhere).
+    const showRaw = model.showRawReadings !== false;
+    const baseMin = showRaw ? d3.min(points, p => p.baseValue ?? undefined) : undefined;
+    const baseMax = showRaw ? d3.max(points, p => p.baseValue ?? undefined) : undefined;
     // Span every point's own limits (per-point — generalizes the old two-phase min/max, and is
     // correct for varying-limit charts where limits step per point).
     const limMin = d3.min(limits.perPoint, s => s.lcl) ?? 0;
     const limMax = d3.max(limits.perPoint, s => s.ucl) ?? 0;
-    const lower = Math.min(limMin, dataMin, targetMin ?? Infinity);
-    const upper = Math.max(limMax, dataMax, targetMax ?? -Infinity);
+    const lower = Math.min(limMin, dataMin, targetMin ?? Infinity, baseMin ?? Infinity);
+    const upper = Math.max(limMax, dataMax, targetMax ?? -Infinity, baseMax ?? -Infinity);
     // Relative pad; on a flat domain (upper === lower) scale the pad to the value's magnitude
     // (an absolute 1 crushes small-magnitude flat data — e.g. a constant 2.5% rate).
     const pad = upper > lower ? (upper - lower) * 0.05 : (Math.abs(upper) * 0.1 || 1);
@@ -281,7 +299,7 @@ export function renderChart(
     // Varying-limit charts (p/u) step per point; constant charts use the per-segment path.
     if (limits.varyingLimits) {
         if (showZones && !hc) drawSteppedZones(g, points, limits.perPoint, xPos, y, colors);
-        drawSteppedLimits(g, points, limits.perPoint, xPos, y, colors);
+        drawSteppedLimits(g, points, limits.perPoint, xPos, y, colors, limits.smoothLimits === true);
     } else {
         if (showZones && !hc) drawZones(g, segPixels, y, colors);
         drawLimitLines(g, segPixels, y, colors);
@@ -298,17 +316,33 @@ export function renderChart(
     // Each chart shows its own labelled X axis (the MR panel draws the bottom one too).
     drawAxes(g, x, y, points, mainH, formatValue, true);
 
+    // Faint raw-reading overlay behind the smoothed line (EWMA/MA only — baseValue is unset elsewhere).
+    // Non-interactive so it never steals tooltips/selection from the smoothed points on top.
+    if (showRaw) {
+        g.selectAll<SVGCircleElement, DataPoint>("circle.spc-raw")
+            .data(points.filter(p => p.baseValue != null))
+            .join("circle")
+            .attr("class", "spc-raw")
+            .attr("cx", xPos).attr("cy", p => y(p.baseValue as number)).attr("r", model.rawSize ?? 3)
+            .attr("fill", hc ? colors.line : (model.rawColor || "#757575"))
+            .attr("opacity", model.rawOpacity ?? 0.6)
+            .style("pointer-events", "none");
+    }
+
     // .defined breaks the line at gap slots (value === null); d3.line does not auto-break on null.
     const line = d3.line<DataPoint>().defined(p => p.value !== null).x(xPos).y(p => y(p.value as number));
     g.append("path").datum(points).attr("class", "spc-line").attr("d", line)
         .attr("fill", "none").attr("stroke", colors.line).attr("stroke-width", 2);
 
     const realPoints = points.filter(p => p.value !== null);
-    const pointSymbol = d3.symbol().type(symbolFor(model.pointShape, d3.symbolCircle)).size(30);
+    // d3.symbol().size() is the marker AREA; expose it to users as a radius (r) → area = π·r².
+    const pointR = model.pointSize ?? 3;
+    const pointOpac = model.pointOpacity ?? 1;
+    const pointSymbol = d3.symbol().type(symbolFor(model.pointShape, d3.symbolCircle)).size(Math.PI * pointR * pointR);
     const pointSel = g.selectAll<SVGPathElement, DataPoint>("path.spc-point").data(realPoints).join("path")
         .attr("class", "spc-point")
         .attr("transform", p => `translate(${xPos(p)},${y(p.value as number)})`)
-        .attr("d", pointSymbol).attr("fill", colors.line);
+        .attr("d", pointSymbol).attr("fill", colors.line).attr("opacity", pointOpac);
 
     const violSel = drawMarkers(g, points, results, xPos, y, colors, symbolFor(model.violationShape, d3.symbolCircle));
 
@@ -341,7 +375,7 @@ export function renderChart(
         const mr = drawMrChart(g, points, limits.companion, limits.singlePhase, segPixels, x, xPos, mrTop, mrH, colors,
             formatValue, model.showPhaseChangeLine !== false,
             model.phaseChangeColor || DEFAULT_PHASE_CHANGE_COLOR,
-            model.pointShape, model.violationShape);
+            model.pointShape, model.violationShape, pointR, pointOpac);
         markerSels.push(mr.pointSel, mr.violSel);
         if (services?.tooltip) {
             const axisName = services.axisName;
@@ -484,16 +518,17 @@ function drawLimitLines(g: GSel, segs: SegmentPixels[], y: YScale, colors: Chart
 }
 
 /**
- * Stepped center/UCL/LCL for varying-limit charts (p, u): each point's limit drawn as a step
- * centered on its marker (`d3.curveStep` steps at the inter-point midpoints, so a limit lines up
- * under its point). Breaks at gaps via `.defined`. Limits indexed by point (perPoint aligned 1-based).
+ * Per-point center/UCL/LCL for varying-limit charts. `smooth` chooses the interpolation: stepped
+ * (`d3.curveStep`, centered on each marker) for p/u's discrete per-`n` levels, or linear (a connected
+ * envelope) for EWMA/MA's smoothly-widening limits. Breaks at gaps via `.defined`.
  */
 function drawSteppedLimits(
     g: GSel, points: DataPoint[], perPoint: SpcStatistics[],
-    xPos: (p: DataPoint) => number, y: YScale, colors: ChartColors
+    xPos: (p: DataPoint) => number, y: YScale, colors: ChartColors, smooth = false
 ): void {
+    const curve = smooth ? d3.curveLinear : d3.curveStep;
     const stepped = (pick: (s: SpcStatistics) => number, color: string) => {
-        const line = d3.line<DataPoint>().defined(p => p.value !== null).curve(d3.curveStep)
+        const line = d3.line<DataPoint>().defined(p => p.value !== null).curve(curve)
             .x(xPos).y(p => y(pick(perPoint[p.index - 1])));
         g.append("path").datum(points).attr("d", line)
             .attr("fill", "none").attr("stroke", color).attr("stroke-width", 1.5).attr("stroke-dasharray", "6 4");
@@ -756,7 +791,7 @@ function drawMrChart(
     x: d3.ScalePoint<number>, xPos: (p: DataPoint) => number, mrTop: number, mrH: number,
     colors: ChartColors, formatValue: (n: number) => string,
     showPhaseChange: boolean, phaseChangeColor: string,
-    pointShape?: string, violationShape?: string
+    pointShape?: string, violationShape?: string, pointR = 3, pointOpac = 1
 ): { pointSel: MarkerSel; violSel: MarkerSel } {
     const mrG = g.append("g").attr("transform", `translate(0,${mrTop})`);
 
@@ -797,11 +832,11 @@ function drawMrChart(
     mrG.append("path").datum(points).attr("class", "spc-mr-line").attr("d", line)
         .attr("fill", "none").attr("stroke", colors.line).attr("stroke-width", 2);
 
-    const pointSymbol = d3.symbol().type(symbolFor(pointShape, d3.symbolCircle)).size(30);
+    const pointSymbol = d3.symbol().type(symbolFor(pointShape, d3.symbolCircle)).size(Math.PI * pointR * pointR);
     const pointSel = mrG.selectAll<SVGPathElement, DataPoint>("path.spc-mr-point").data(withMr).join("path")
         .attr("class", "spc-mr-point")
         .attr("transform", p => `translate(${xPos(p)},${mrY(cv(p) as number)})`)
-        .attr("d", pointSymbol).attr("fill", colors.line);
+        .attr("d", pointSymbol).attr("fill", colors.line).attr("opacity", pointOpac);
 
     const viol = companionViolations(companion);
     const violating = points.filter((_, i) => viol[i]);

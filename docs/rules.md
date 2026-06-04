@@ -185,8 +185,10 @@ non-alternating step. Direction-only, so phase-independent.
 - **Rules vary by chart type.** The individuals (X-mR) chart and the **X̄ subgroup charts (X̄-R,
   X̄-s)** use all 8 — subgroup means are ~normal (CLT). **Attribute charts (p, np, c, u) use only
   {1 Beyond, 4 Run}** by default: their binomial/Poisson spread is skewed, so the Zone A/B rules'
-  ±1σ/±2σ probability interpretation (which assumes normality) doesn't hold. The dispersion
-  companions (MR, R, s) flag beyond-limit only (on both bounds — a range below its LCL is a signal).
+  ±1σ/±2σ probability interpretation (which assumes normality) doesn't hold. **Time-weighted charts
+  (EWMA, moving average) use only {1 Beyond}** — their points are autocorrelated by construction, so
+  the run/zone rules are invalid. The dispersion companions (MR, R, s) flag beyond-limit only (on
+  both bounds — a range below its LCL is a signal).
 - **Divergence from the source dashboard:** Rules 2, 3, 5, and 8 were tightened from the original DAX
   measures so the violation lands on the point that actually breaks the pattern (and so a single
   reversal/non-alternating step no longer trips the trend/over-control rules). On data with these

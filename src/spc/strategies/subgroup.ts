@@ -45,8 +45,9 @@ function subgroupModel(points: DataPoint[], ctx: ChartContext, kind: "r" | "s"):
     // A2/A3 are 3-sigma constants → 1-sigma equivalent (standard error of the mean) is A·spread̄/3.
     const A = kind === "r" ? k?.A2 ?? 0 : k?.A3 ?? 0;
     const sigmaEq = (A * spreadBar) / 3;
-    // X̄ means aren't non-negative → never floor the LCL (regardless of the global toggle).
-    const xbarStats = limitsFrom(xBarBar, 0, sigmaEq, mult, false);
+    // LCL flooring follows the global toggle — consistently with individuals/EWMA/MA (the whole
+    // mean family). Only the inherently-non-negative attribute charts always floor.
+    const xbarStats = limitsFrom(xBarBar, 0, sigmaEq, mult, ctx.opts.floorLcl ?? true);
     const perPoint = points.map(() => xbarStats);
 
     const ucl = (kind === "r" ? k?.D4 ?? 0 : k?.B4 ?? 0) * spreadBar;

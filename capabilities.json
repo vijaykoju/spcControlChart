@@ -37,6 +37,16 @@
                 "chartType": { "type": { "enumeration": [] } }
             }
         },
+        "chartParameters": {
+            "properties": {
+                "ewmaLambda": { "type": { "numeric": true } },
+                "maWindow": { "type": { "numeric": true } },
+                "showRaw": { "type": { "bool": true } },
+                "rawColor": { "type": { "fill": { "solid": { "color": true } } } },
+                "rawOpacity": { "type": { "numeric": true } },
+                "rawSize": { "type": { "numeric": true } }
+            }
+        },
         "controlLimits": {
             "properties": {
                 "sigmaMultiplier": { "type": { "numeric": true } },
@@ -114,6 +124,8 @@
                 "zoneCColor": { "type": { "fill": { "solid": { "color": true } } } },
                 "violationShape": { "type": { "enumeration": [] } },
                 "pointShape": { "type": { "enumeration": [] } },
+                "pointSize": { "type": { "numeric": true } },
+                "pointOpacity": { "type": { "numeric": true } },
                 "showZones": { "type": { "bool": true } },
                 "showZoneLabels": { "type": { "bool": true } }
             }

@@ -16,6 +16,7 @@ import ItemDropdown = formattingSettings.ItemDropdown;
 import TextInput = formattingSettings.TextInput;
 
 const Min = powerbi.visuals.ValidatorType.Min;
+const Max = powerbi.visuals.ValidatorType.Max;
 
 /** Chart-type options (values must match ChartType / toChartType). */
 const CHART_TYPE_ITEMS: powerbi.IEnumMember[] = [
@@ -26,6 +27,8 @@ const CHART_TYPE_ITEMS: powerbi.IEnumMember[] = [
     { value: "u", displayName: "u (defects per unit)" },
     { value: "xbar-r", displayName: "X̄-R (mean & range)" },
     { value: "xbar-s", displayName: "X̄-s (mean & std dev)" },
+    { value: "ewma", displayName: "EWMA" },
+    { value: "ma", displayName: "Moving average" },
 ];
 
 /** Marker shape options (keys must match the SYMBOLS map in chart.ts). */
@@ -68,6 +71,45 @@ class ChartCard extends Card {
     name = "chart";
     displayName = "Chart";
     slices = [this.chartType];
+}
+
+class ChartParametersCard extends Card {
+    ewmaLambda = new NumUpDown({
+        name: "ewmaLambda",
+        displayName: "EWMA weight (λ)",
+        description: "EWMA smoothing weight, between 0 and 1 (smaller = smoother / more sensitive to small shifts).",
+        value: 0.2,
+        options: { minValue: { type: Min, value: 0 } },
+    });
+    maWindow = new NumUpDown({
+        name: "maWindow",
+        displayName: "Moving-average window",
+        description: "Number of points averaged for the moving-average chart.",
+        value: 5,
+        options: { minValue: { type: Min, value: 2 } },
+    });
+    showRaw = new ToggleSwitch({
+        name: "showRaw",
+        displayName: "Show raw readings",
+        description: "Overlay the original individual readings behind the EWMA / moving-average line.",
+        value: true,
+    });
+    rawColor = new ColorPicker({ name: "rawColor", displayName: "Raw reading color", value: { value: "#757575" } });
+    rawOpacity = new NumUpDown({
+        name: "rawOpacity",
+        displayName: "Raw reading opacity (%)",
+        value: 60,
+        options: { minValue: { type: Min, value: 0 }, maxValue: { type: Max, value: 100 } },
+    });
+    rawSize = new NumUpDown({
+        name: "rawSize",
+        displayName: "Raw reading size",
+        value: 3,
+        options: { minValue: { type: Min, value: 1 } },
+    });
+    name = "chartParameters";
+    displayName = "Chart Parameters";
+    slices = [this.ewmaLambda, this.maWindow, this.showRaw, this.rawColor, this.rawOpacity, this.rawSize];
 }
 
 class ControlLimitsCard extends Card {
@@ -172,6 +214,18 @@ class AppearanceCard extends Card {
         name: "pointShape", displayName: "Data point shape",
         items: SHAPE_ITEMS, value: { value: "circle", displayName: "Circle" },
     });
+    pointSize = new NumUpDown({
+        name: "pointSize",
+        displayName: "Data point size",
+        value: 3,
+        options: { minValue: { type: Min, value: 1 } },
+    });
+    pointOpacity = new NumUpDown({
+        name: "pointOpacity",
+        displayName: "Data point opacity (%)",
+        value: 100,
+        options: { minValue: { type: Min, value: 0 }, maxValue: { type: Max, value: 100 } },
+    });
     showZones = new ToggleSwitch({ name: "showZones", displayName: "Show zone shading", value: true });
     showZoneLabels = new ToggleSwitch({ name: "showZoneLabels", displayName: "Show zone labels", value: false });
     name = "appearance";
@@ -179,7 +233,7 @@ class AppearanceCard extends Card {
     slices = [
         this.lineColor, this.violationColor, this.limitColor, this.centerColor,
         this.zoneAColor, this.zoneBColor, this.zoneCColor,
-        this.violationShape, this.pointShape, this.showZones, this.showZoneLabels,
+        this.violationShape, this.pointShape, this.pointSize, this.pointOpacity, this.showZones, this.showZoneLabels,
     ];
 }
 
@@ -254,6 +308,7 @@ class LegendCard extends Card {
 
 export class VisualFormattingSettingsModel extends Model {
     chart = new ChartCard();
+    chartParameters = new ChartParametersCard();
     controlLimits = new ControlLimitsCard();
     phaseDetection = new PhaseDetectionCard();
     rules = new RulesCard();
@@ -262,5 +317,5 @@ export class VisualFormattingSettingsModel extends Model {
     mrChart = new MrChartCard();
     legend = new LegendCard();
     appearance = new AppearanceCard();
-    cards = [this.chart, this.controlLimits, this.phaseDetection, this.rules, this.ruleReference, this.annotations, this.mrChart, this.legend, this.appearance];
+    cards = [this.chart, this.chartParameters, this.controlLimits, this.phaseDetection, this.rules, this.ruleReference, this.annotations, this.mrChart, this.legend, this.appearance];
 }
