@@ -41,6 +41,8 @@
             "properties": {
                 "ewmaLambda": { "type": { "numeric": true } },
                 "maWindow": { "type": { "numeric": true } },
+                "cusumK": { "type": { "numeric": true } },
+                "cusumH": { "type": { "numeric": true } },
                 "showRaw": { "type": { "bool": true } },
                 "rawColor": { "type": { "fill": { "solid": { "color": true } } } },
                 "rawOpacity": { "type": { "numeric": true } },

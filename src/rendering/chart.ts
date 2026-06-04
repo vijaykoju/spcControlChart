@@ -10,7 +10,7 @@ import type powerbi from "powerbi-visuals-api";
 import { ITooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import { DataPoint, PointRuleResult, SpcStatistics, ChartColors } from "../spc/types";
 import { PhaseSegment } from "../spc/statistics";
-import { LimitModel, CompanionModel, CompanionPoint, companionViolations } from "../spc/chartType";
+import { LimitModel, CompanionModel, CompanionPoint, companionViolations, secondaryBeyond } from "../spc/chartType";
 import { buildTooltipItems, buildMrTooltipItems } from "../tooltip";
 import { buildLegendItems, LegendItem, LegendKey } from "../legend";
 import { ChartColorSet } from "../theme";
@@ -46,6 +46,10 @@ export interface ChartModel {
     zonesMeaningful?: boolean;
     /** Overlay the original individual readings (faint) behind the smoothed line — EWMA/MA only. */
     showRawReadings?: boolean;
+    /** Whether this chart type overlays raw readings on a smoothed line (EWMA/MA). Gates both the
+     *  raw-dot draw and the Y-domain baseValue expansion — CUSUM also sets baseValue but on a
+     *  cumulative scale, so it must stay off there. */
+    allowRawOverlay?: boolean;
     showZoneLabels?: boolean;
     /** Symbol-shape keys (see SYMBOLS); fall back to circle / diamond. */
     pointShape?: string;
@@ -269,16 +273,20 @@ export function renderChart(
     const targetMin = drawTarget ? d3.min(points, p => p.target ?? undefined) : undefined;
     const targetMax = drawTarget ? d3.max(points, p => p.target ?? undefined) : undefined;
     // Raw-reading overlay (EWMA/MA): the original readings swing wider than the smoothed line, so
-    // include their range in the domain when drawn (only those charts set baseValue — no-op elsewhere).
-    const showRaw = model.showRawReadings !== false;
+    // include their range in the domain when drawn. allowRawOverlay gates BOTH the dots and this
+    // span — CUSUM sets baseValue too, but on a cumulative scale, so it must stay out of the domain.
+    const showRaw = model.showRawReadings !== false && model.allowRawOverlay === true;
     const baseMin = showRaw ? d3.min(points, p => p.baseValue ?? undefined) : undefined;
     const baseMax = showRaw ? d3.max(points, p => p.baseValue ?? undefined) : undefined;
+    // CUSUM's lower arm (−C⁻) reaches −H and below; span it so the second series isn't clipped.
+    const secMin = limits.secondarySeries ? d3.min(limits.secondarySeries, v => v ?? undefined) : undefined;
+    const secMax = limits.secondarySeries ? d3.max(limits.secondarySeries, v => v ?? undefined) : undefined;
     // Span every point's own limits (per-point — generalizes the old two-phase min/max, and is
     // correct for varying-limit charts where limits step per point).
     const limMin = d3.min(limits.perPoint, s => s.lcl) ?? 0;
     const limMax = d3.max(limits.perPoint, s => s.ucl) ?? 0;
-    const lower = Math.min(limMin, dataMin, targetMin ?? Infinity, baseMin ?? Infinity);
-    const upper = Math.max(limMax, dataMax, targetMax ?? -Infinity, baseMax ?? -Infinity);
+    const lower = Math.min(limMin, dataMin, targetMin ?? Infinity, baseMin ?? Infinity, secMin ?? Infinity);
+    const upper = Math.max(limMax, dataMax, targetMax ?? -Infinity, baseMax ?? -Infinity, secMax ?? -Infinity);
     // Relative pad; on a flat domain (upper === lower) scale the pad to the value's magnitude
     // (an absolute 1 crushes small-magnitude flat data — e.g. a constant 2.5% rate).
     const pad = upper > lower ? (upper - lower) * 0.05 : (Math.abs(upper) * 0.1 || 1);
@@ -316,8 +324,8 @@ export function renderChart(
     // Each chart shows its own labelled X axis (the MR panel draws the bottom one too).
     drawAxes(g, x, y, points, mainH, formatValue, true);
 
-    // Faint raw-reading overlay behind the smoothed line (EWMA/MA only — baseValue is unset elsewhere).
-    // Non-interactive so it never steals tooltips/selection from the smoothed points on top.
+    // Faint raw-reading overlay behind the smoothed line (EWMA/MA — gated by allowRawOverlay, since
+    // CUSUM also sets baseValue). Non-interactive so it never steals tooltips/selection.
     if (showRaw) {
         g.selectAll<SVGCircleElement, DataPoint>("circle.spc-raw")
             .data(points.filter(p => p.baseValue != null))
@@ -346,10 +354,46 @@ export function renderChart(
 
     const violSel = drawMarkers(g, points, results, xPos, y, colors, symbolFor(model.violationShape, d3.symbolCircle));
 
+    // CUSUM: the lower arm (−C⁻) as a second line + points about the zero centerline, plus a signal
+    // marker on whichever arm crosses ±H. The non-signal C⁻ points are display-only (no tooltip /
+    // selection — the C⁺ points carry the identity), but the SIGNAL markers are tooltip-wired below:
+    // they sit on top of the C⁺ points and would otherwise block their hover. secondarySeries is null
+    // for every other chart, so this whole branch is a no-op there.
+    const cusumSig: MarkerSel[] = [];
+    if (limits.secondarySeries) {
+        const sec = limits.secondarySeries;
+        const secAt = (p: DataPoint) => sec[p.index - 1];
+        const secLine = d3.line<DataPoint>().defined(p => secAt(p) != null).x(xPos).y(p => y(secAt(p) as number));
+        g.append("path").datum(points).attr("class", "spc-line-secondary").attr("d", secLine)
+            .attr("fill", "none").attr("stroke", colors.line).attr("stroke-width", 2);
+        g.selectAll<SVGPathElement, DataPoint>("path.spc-point-secondary")
+            .data(points.filter(p => secAt(p) != null)).join("path")
+            .attr("class", "spc-point-secondary")
+            .attr("transform", p => `translate(${xPos(p)},${y(secAt(p) as number)})`)
+            .attr("d", pointSymbol).attr("fill", colors.line).attr("opacity", pointOpac);
+
+        const signals = secondaryBeyond(points, limits);
+        const sigMarker = d3.symbol().type(symbolFor(model.violationShape, d3.symbolCircle)).size(100);
+        const sigUpper = g.selectAll<SVGPathElement, DataPoint>("path.spc-cusum-sig-upper")
+            .data(points.filter(p => signals[p.index - 1].upper)).join("path")
+            .attr("class", "spc-cusum-sig-upper")
+            .attr("transform", p => `translate(${xPos(p)},${y(p.value as number)})`)
+            .attr("d", sigMarker).attr("fill", colors.violation);
+        const sigLower = g.selectAll<SVGPathElement, DataPoint>("path.spc-cusum-sig-lower")
+            .data(points.filter(p => signals[p.index - 1].lower)).join("path")
+            .attr("class", "spc-cusum-sig-lower")
+            .attr("transform", p => `translate(${xPos(p)},${y(secAt(p) as number)})`)
+            .attr("d", sigMarker).attr("fill", colors.violation);
+        cusumSig.push(sigUpper, sigLower);
+    }
+
     if (services?.tooltip) {
         const cb = tooltipCallback(model, services);
         services.tooltip.addTooltip(pointSel, cb);
         services.tooltip.addTooltip(violSel, cb);
+        // Signal markers sit atop the C⁺ points; wire them so signaling points keep their tooltip
+        // (and lower-arm signals gain one). Non-signal C⁻ points stay display-only.
+        for (const sel of cusumSig) services.tooltip.addTooltip(sel, cb);
     }
 
     if (showZones && showZoneLabels) drawZoneLabels(g, segPixels, y);

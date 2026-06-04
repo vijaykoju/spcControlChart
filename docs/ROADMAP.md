@@ -88,11 +88,29 @@ Two implications:
 - **Phase 2 — Subgroup charts (X̄-R, X̄-s).** Pre-aggregated input first; dispersion companion;
   constants by n; full rules on X̄. (Spike the raw-row grouping path in parallel.) Design:
   [`phase2-design.md`](phase2-design.md).
-- **Phase 3 — Time-weighted (EWMA, CUSUM, moving average).** Own statistic + signal logic; renderer
-  tweaks (CUSUM is cumulative). Design: [`phase3-design.md`](phase3-design.md).
+- **Phase 3 — Time-weighted (EWMA, CUSUM, moving average).** ✅ Shipped. EWMA + moving average in
+  2.2.0; CUSUM (two-arm tabular, decision interval ±H, own signal — no WE rules) in 2.3.0. Designs:
+  [`phase3-design.md`](phase3-design.md), [`cusum-design.md`](cusum-design.md).
 - **Phase 4 — Capability display (Cp/Cpk/Pp/Ppk + histogram).** Most divergent rendering and inputs
   (USL/LSL spec limits). **Decision:** likely a *separate visual* in this project rather than a mode
   of the control chart.
+
+## Future ideas (unscheduled)
+
+Charting features worth doing eventually; not tied to a phase.
+
+- **Raw companion panel for CUSUM.** CUSUM plots cumulative deviations on a 0-centered ±H scale, so
+  the raw readings can't be *overlaid* the way they are on EWMA/MA (different units/scale — see
+  [`cusum-design.md`](cusum-design.md)). The right way to give raw context is a **separate aligned
+  panel**: a small individuals (X) chart sharing the x-axis, stacked with the CUSUM the way the MR
+  panel sits below the individuals chart. A new companion-panel variant (the companion machinery
+  already exists for MR/R/s), not an overlay.
+- **Trended (regression) control limits.** For processes with an inherent trend (tool wear, etc.),
+  fit a **sloping regression line as the center** with control limits running parallel to it, instead
+  of a flat center ± kσ. Considered for Phase 3 and deferred — it's a legitimate *charting* feature
+  (not a stats-analysis tool), but it changes the limit model to a per-point sloping center and needs
+  its own design (fit method, how it interacts with phases/changepoints, and how residual σ is
+  estimated).
 
 ## Cross-cutting (every phase)
 

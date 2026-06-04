@@ -13,7 +13,7 @@ import { DataPoint, SpcStatistics } from "./types";
 import { PhaseSegment, StatsOptions } from "./statistics";
 import { ChangepointOptions } from "./changepoint";
 
-export type ChartType = "individuals" | "p" | "np" | "c" | "u" | "xbar-r" | "xbar-s" | "ewma" | "ma";
+export type ChartType = "individuals" | "p" | "np" | "c" | "u" | "xbar-r" | "xbar-s" | "ewma" | "ma" | "cusum";
 
 /** Resolve the limits that apply to a given point — the single accessor the rule engine uses. */
 export type LimitsAccessor = (p: DataPoint) => SpcStatistics;
@@ -56,6 +56,9 @@ export interface LimitModel {
     /** With varyingLimits, draw the limit lines as a connected (linear) envelope rather than the
      *  stepped p/u staircase — for the smoothly-widening EWMA/MA limits. Default: stepped. */
     smoothLimits?: boolean;
+    /** CUSUM only: the lower arm (−C⁻), plotted as a second series about the zero centerline against
+     *  the same ±H limits. Null/absent for every other chart, so the renderer change is isolated. */
+    secondarySeries?: (number | null)[];
 }
 
 /** Everything a strategy needs beyond the points. Opaque to the caller, so individuals-only
@@ -68,6 +71,10 @@ export interface ChartContext {
     ewmaLambda?: number;
     /** Moving-average window size. */
     maWindow?: number;
+    /** CUSUM reference value k (slack, in σ units). */
+    cusumK?: number;
+    /** CUSUM decision interval h (control limit, in σ units). */
+    cusumH?: number;
 }
 
 export interface ChartStrategy {
@@ -104,3 +111,13 @@ export const limitsFromModel = (m: LimitModel): LimitsAccessor => (p) => m.perPo
  *  test never fires. Aligned to points; the single source for MR/R/s violations. */
 export const companionViolations = (c: CompanionModel): boolean[] =>
     c.value.map((v, i) => v != null && (v > c.limits[i].ucl || v < c.limits[i].lcl));
+
+/** Two-arm (CUSUM) beyond-H signals: per point, whether the upper arm (value = C⁺) exceeds its UCL
+ *  (+H) or the lower arm (secondarySeries = −C⁻) drops below its LCL (−H). Absent/null secondary →
+ *  no lower signal. Aligned to points; the single source for CUSUM violations (the WE rule engine
+ *  only inspects `value` and would miss every downward shift). */
+export const secondaryBeyond = (points: DataPoint[], m: LimitModel): { upper: boolean; lower: boolean }[] =>
+    m.perPoint.map((s, i) => ({
+        upper: points[i].value != null && (points[i].value as number) > s.ucl,
+        lower: m.secondarySeries?.[i] != null && (m.secondarySeries[i] as number) < s.lcl,
+    }));

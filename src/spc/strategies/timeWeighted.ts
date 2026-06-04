@@ -60,6 +60,56 @@ export const ewmaStrategy: ChartStrategy = {
 
 const window = (ctx: ChartContext) => Math.max(2, Math.round(ctx.maWindow ?? 5));
 
+/** Shared CUSUM base stats — one source of truth for both arms and the threshold. μ₀ from the raw
+ *  readings (accessed via `getRaw`: `value` in prepare, `baseValue` in computeLimits), σ = MR̄/d₂,
+ *  K = k·σ, H = h·σ (all in the raw measurement's units). */
+function cusumStats(points: DataPoint[], ctx: ChartContext, getRaw: (p: DataPoint) => number | null | undefined) {
+    const k = ctx.cusumK ?? 0.5;
+    const h = ctx.cusumH ?? 5;
+    const mu0 = mean(reals(points, getRaw));
+    const sigma = mean(reals(points, p => p.movingRange)) / D2;
+    return { mu0, sigma, K: k * sigma, H: h * sigma };
+}
+
+export const cusumStrategy: ChartStrategy = {
+    id: "cusum", applicableRules: new Set(), zonesMeaningful: false,
+    valueLabel: "CUSUM", // the axis title — the chart plots BOTH arms, so don't label it "C⁺"
+    validate: (_pts, ctx) => {
+        const k = ctx.cusumK ?? 0.5, h = ctx.cusumH ?? 5;
+        return Number.isFinite(k) && k > 0 && Number.isFinite(h) && h > 0
+            ? null : "CUSUM reference value k and decision interval h must be greater than 0";
+    },
+    prepare: (raw, ctx) => {
+        const { mu0, K } = cusumStats(raw, ctx, p => p.value); // raw reading is in `value` here
+        let cPlus = 0;
+        return raw.map(p => {
+            // Gap: hold C⁺ across it, plot nothing. Strip target (raw-scale → meaningless on ±H).
+            if (p.value === null) return { ...p, baseValue: null, target: null, direction: null };
+            cPlus = Math.max(0, (p.value as number) - (mu0 + K) + cPlus);
+            return { ...p, baseValue: p.value, value: cPlus, target: null, direction: null };
+        });
+    },
+    computeLimits: (points, ctx) => {
+        const mult = ctx.opts.sigmaMultiplier ?? 3;
+        const { mu0, K, H } = cusumStats(points, ctx, p => p.baseValue); // raw reading is in `baseValue` now
+        let cMinus = 0;
+        const secondarySeries = points.map(p => {
+            if (p.baseValue == null) return null; // gap: hold C⁻, plot nothing
+            cMinus = Math.max(0, (mu0 - K) - (p.baseValue as number) + cMinus);
+            return -cMinus; // plotted below the zero centerline
+        });
+        // ±H decision interval about 0, flooring OFF — the lower line is intrinsically −H, so we must
+        // NOT thread ctx.opts.floorLcl (the default floors it to 0 and breaks the lower arm).
+        const stats = limitsFrom(0, 0, H / mult, mult, false);
+        const perPoint = points.map(() => stats);
+        const n = points.length;
+        const segments: PhaseSegment[] = n
+            ? [{ stats, startIndex: points[0].index, endIndex: points[n - 1].index }]
+            : [];
+        return { perPoint, segments, singlePhase: true, companion: null, varyingLimits: false, secondarySeries };
+    },
+};
+
 export const maStrategy: ChartStrategy = {
     id: "ma", applicableRules: new Set([1]), zonesMeaningful: false,
     valueLabel: "Moving average",

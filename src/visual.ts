@@ -52,6 +52,7 @@ function roleBound(dataView: DataView | undefined, role: string): boolean {
 const CHART_TYPE_LABELS: Record<string, string> = {
     individuals: "Individuals chart", p: "p-chart", np: "np-chart", c: "c-chart", u: "u-chart",
     "xbar-r": "X̄-R chart", "xbar-s": "X̄-s chart", ewma: "EWMA chart", ma: "Moving-average chart",
+    cusum: "CUSUM chart",
 };
 const chartTypeLabel = (id: string) => CHART_TYPE_LABELS[id] ?? "This chart";
 const ROLE_LABELS: Record<string, string> = {
@@ -116,6 +117,8 @@ export class Visual implements IVisual {
                 ),
                 ewmaLambda: s.chartParameters.ewmaLambda.value,
                 maWindow: s.chartParameters.maWindow.value,
+                cusumK: s.chartParameters.cusumK.value,
+                cusumH: s.chartParameters.cusumH.value,
             };
             // Attribute charts need a Sample size (p/np/u) — prompt rather than render wrong limits.
             const missingRole = (strategy.requiredRoles ?? []).find(r => !roleBound(dataView, r));
@@ -217,6 +220,9 @@ export class Visual implements IVisual {
                     showZones: a.showZones.value,
                     zonesMeaningful: strategy.zonesMeaningful,
                     showRawReadings: s.chartParameters.showRaw.value,
+                    // Raw overlay (dots + Y-domain) applies only to charts that overlay raw on a
+                    // smoothed line; CUSUM also sets baseValue but on a cumulative scale, so gate it out.
+                    allowRawOverlay: strategy.id === "ewma" || strategy.id === "ma",
                     rawColor: s.chartParameters.rawColor.value.value,
                     rawOpacity: s.chartParameters.rawOpacity.value / 100,
                     rawSize: s.chartParameters.rawSize.value,

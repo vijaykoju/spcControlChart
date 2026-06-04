@@ -187,7 +187,9 @@ non-alternating step. Direction-only, so phase-independent.
   {1 Beyond, 4 Run}** by default: their binomial/Poisson spread is skewed, so the Zone A/B rules'
   ±1σ/±2σ probability interpretation (which assumes normality) doesn't hold. **Time-weighted charts
   (EWMA, moving average) use only {1 Beyond}** — their points are autocorrelated by construction, so
-  the run/zone rules are invalid. The dispersion companions (MR, R, s) flag beyond-limit only (on
+  the run/zone rules are invalid. **CUSUM uses no Western Electric rules at all:** it has its own
+  two-arm signal — the cumulative sums C⁺/C⁻ crossing the decision interval ±H — computed directly
+  rather than through the rule engine. The dispersion companions (MR, R, s) flag beyond-limit only (on
   both bounds — a range below its LCL is a signal).
 - **Divergence from the source dashboard:** Rules 2, 3, 5, and 8 were tightened from the original DAX
   measures so the violation lands on the point that actually breaks the pattern (and so a single

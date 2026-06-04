@@ -13,9 +13,9 @@ import { evaluateRules, RULES } from "../src/spc/rules";
 import { modelFromPhased, individualsStrategy } from "../src/spc/strategies/individuals";
 import { pStrategy, npStrategy, cStrategy, uStrategy } from "../src/spc/strategies/attribute";
 import { xbarRStrategy, xbarSStrategy } from "../src/spc/strategies/subgroup";
-import { ewmaStrategy, maStrategy } from "../src/spc/strategies/timeWeighted";
+import { ewmaStrategy, maStrategy, cusumStrategy } from "../src/spc/strategies/timeWeighted";
 import { constantsFor } from "../src/spc/constants";
-import { limitsFromModel, companionViolations } from "../src/spc/chartType";
+import { limitsFromModel, companionViolations, secondaryBeyond, LimitModel } from "../src/spc/chartType";
 import { DataPoint, PhasedStatistics } from "../src/spc/types";
 import { buildTooltipItems, buildMrTooltipItems } from "../src/tooltip";
 import { toDataLabelMode, toMrChartOptions, toLegendPosition, toSidePosition, toChartType, applicableEnabledRules } from "../src/settingsMap";
@@ -351,7 +351,7 @@ const noSpread = buildDataPoints([
 check("X̄-R validate: all-blank spread rejected", typeof xbarRStrategy.validate!(noSpread, noCtx) === "string");
 
 // ============================================================ time-weighted charts (Phase 3)
-const tw = (strategy: typeof ewmaStrategy, values: (number | null)[], params: { ewmaLambda?: number; maWindow?: number }) => {
+const tw = (strategy: typeof ewmaStrategy, values: (number | null)[], params: { ewmaLambda?: number; maWindow?: number; cusumK?: number; cusumH?: number }) => {
     const raw = buildDataPoints(values.map((v, i) => ({ label: "t" + i, value: v, categoryIndex: i })));
     const ctx = { opts: {}, ...params };
     const pts = strategy.prepare(raw, ctx);
@@ -401,6 +401,61 @@ const ewShiftRes = evaluateRules(ewShift.pts, limitsFromModel(ewShift.model), ew
 check("EWMA: sustained shift fires rule 1 (and only rule 1)",
     ewShiftRes.some(r => r.firedRules.includes(1)) && ewShiftRes.every(r => r.firedRules.every(id => id === 1)),
     ewShiftRes.map(r => r.firedRules));
+
+// ============================================================ CUSUM (Phase 3 follow-up)
+// Recursion fixture: a step up at point 6. Compute μ₀/σ/K/H in-test (defaults k=0.5, h=5) and the
+// tabular C⁺/C⁻ recursions, then assert the strategy reproduces them — proving prepare (C⁺) and
+// computeLimits (C⁻) share one μ₀/σ.
+const cvals = [10, 10, 10, 10, 10, 16, 16, 16, 16, 16];
+const cmu = cvals.reduce((a, b) => a + b, 0) / cvals.length; // 13
+const cmrbar = cvals.slice(1).reduce((a, x, i) => a + Math.abs(x - cvals[i]), 0) / (cvals.length - 1);
+const csigma = cmrbar / D2, cK = 0.5 * csigma, cH = 5 * csigma;
+let cp = 0; const expCplus = cvals.map(x => (cp = Math.max(0, x - (cmu + cK) + cp)));
+let cm = 0; const expCminus = cvals.map(x => (cm = Math.max(0, (cmu - cK) - x + cm)));
+const cu = tw(cusumStrategy, cvals, {});
+check("CUSUM: C⁺ recursion (value) matches the tabular sum",
+    cvals.every((_, i) => near(cu.pts[i].value as number, expCplus[i])));
+check("CUSUM: C⁻ recursion → secondarySeries = −C⁻",
+    cvals.every((_, i) => near(cu.model.secondarySeries![i] as number, -expCminus[i])));
+check("CUSUM: baseValue preserves the raw reading; target stripped",
+    cu.pts[5].baseValue === 16 && cu.pts[5].target == null);
+
+// ±H decision interval, NOT floored — lcl = −ucl < 0 even though floorLcl defaults true.
+check("CUSUM: ±H limits about 0, LCL not floored",
+    near(cu.model.perPoint[0].ucl, cH) && near(cu.model.perPoint[0].lcl, -cH) &&
+    cu.model.perPoint[0].lcl < 0 && cu.model.perPoint[0].xBar === 0 &&
+    cu.model.varyingLimits === false && cu.model.companion === null);
+
+// Gap (index 3) plots nothing on either arm; sums hold across it and keep accumulating after; finite.
+const cuGap = tw(cusumStrategy, [10, 12, null, 16, 16], {});
+check("CUSUM: gap holds C⁺/C⁻, no NaN",
+    cuGap.pts[2].value === null && cuGap.model.secondarySeries![2] === null &&
+    Number.isFinite(cuGap.model.perPoint[2].ucl) &&
+    (cuGap.pts[3].value as number) > 0 &&                                   // C⁺ resumes after the gap
+    (cuGap.pts[4].value as number) > (cuGap.pts[3].value as number));        // and keeps accumulating
+
+// secondaryBeyond: the two-arm signal source — upper when C⁺ > +H, lower when −C⁻ < −H.
+const sbPts = fromValues([1.5, 0.2, 0.2]);
+const sbStat = { xBar: 0, mrBar: 0, sigma: 0, ucl: 1, lcl: -1, zoneAUpper: 0, zoneALower: 0, zoneBUpper: 0, zoneBLower: 0 };
+const sbModel: LimitModel = {
+    perPoint: [sbStat, sbStat, sbStat], segments: [], singlePhase: true,
+    companion: null, varyingLimits: false, secondarySeries: [-0.2, -1.5, null],
+};
+const sb = secondaryBeyond(sbPts, sbModel);
+check("CUSUM: secondaryBeyond flags the crossing arm",
+    sb[0].upper && !sb[0].lower && !sb[1].upper && sb[1].lower && !sb[2].upper && !sb[2].lower);
+
+// validation + rule set
+check("CUSUM: validate k/h > 0",
+    typeof cusumStrategy.validate!(cu.pts, { opts: {}, cusumK: 0 }) === "string" &&
+    typeof cusumStrategy.validate!(cu.pts, { opts: {}, cusumH: 0 }) === "string" &&
+    cusumStrategy.validate!(cu.pts, { opts: {}, cusumK: 0.5, cusumH: 5 }) === null);
+check("CUSUM: applicableRules empty (own H signal, no WE rules)",
+    eq([...applicableEnabledRules(new Set([1, 2, 3, 4]), cusumStrategy.applicableRules)], []));
+
+// end-to-end: the sustained up-shift drives C⁺ across H → an upper-arm signal exists.
+check("CUSUM: sustained up-shift signals the upper arm",
+    secondaryBeyond(cu.pts, cu.model).some(s => s.upper));
 
 // ============================================================ tooltip (m9/m13)
 

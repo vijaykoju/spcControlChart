@@ -29,6 +29,7 @@ const CHART_TYPE_ITEMS: powerbi.IEnumMember[] = [
     { value: "xbar-s", displayName: "X̄-s (mean & std dev)" },
     { value: "ewma", displayName: "EWMA" },
     { value: "ma", displayName: "Moving average" },
+    { value: "cusum", displayName: "CUSUM" },
 ];
 
 /** Marker shape options (keys must match the SYMBOLS map in chart.ts). */
@@ -88,6 +89,20 @@ class ChartParametersCard extends Card {
         value: 5,
         options: { minValue: { type: Min, value: 2 } },
     });
+    cusumK = new NumUpDown({
+        name: "cusumK",
+        displayName: "CUSUM reference value (k)",
+        description: "CUSUM slack in sigma units — half the shift to detect (0.5 tunes for a 1σ shift).",
+        value: 0.5,
+        options: { minValue: { type: Min, value: 0.1 } },
+    });
+    cusumH = new NumUpDown({
+        name: "cusumH",
+        displayName: "CUSUM decision interval (h)",
+        description: "CUSUM control limit in sigma units — a cumulative sum beyond h·σ signals.",
+        value: 5,
+        options: { minValue: { type: Min, value: 0.1 } },
+    });
     showRaw = new ToggleSwitch({
         name: "showRaw",
         displayName: "Show raw readings",
@@ -109,7 +124,7 @@ class ChartParametersCard extends Card {
     });
     name = "chartParameters";
     displayName = "Chart Parameters";
-    slices = [this.ewmaLambda, this.maWindow, this.showRaw, this.rawColor, this.rawOpacity, this.rawSize];
+    slices = [this.ewmaLambda, this.maWindow, this.cusumK, this.cusumH, this.showRaw, this.rawColor, this.rawOpacity, this.rawSize];
 }
 
 class ControlLimitsCard extends Card {
