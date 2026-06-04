@@ -1,6 +1,6 @@
 {
   "name": "visual",
-  "description": "SPC (statistical process control) X-mR control chart with the 8 Western Electric/Nelson rules and automatic phase/changepoint detection.",
+  "description": "SPC (statistical process control) control charts for Power BI: individuals (X-mR), attribute (p/np/c/u), subgroup (X-bar R/s), and time-weighted (EWMA, moving average, CUSUM), with Western Electric/Nelson rules and automatic phase/changepoint detection.",
   "version": "1.0.0.0",
   "repository": {
     "type": "git",
@@ -12,7 +12,6 @@
     "start": "pbiviz start",
     "package": "pbiviz package",
     "lint": "npx eslint .",
-    "eslint": "npx eslint . --ext .js,.jsx,.ts,.tsx",
     "test": "tsc -p test/tsconfig.json && node test/.out/test/spc.test.js"
   },
   "dependencies": {

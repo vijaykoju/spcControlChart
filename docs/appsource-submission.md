@@ -28,7 +28,8 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
 - ⬜ **No JS errors/exceptions in the console for *any* input data** — verify by running every
   input class in [`edge-cases.md`](edge-cases.md) (empty, all-null, single point, large, wrong
   type) with the browser console open. *(This is the actual cert wording, broader than "no
-  console calls.")*
+  console calls." `--certification-audit` checks source patterns, not runtime over all inputs, so this
+  stays a manual Desktop pass.)*
 
 ### File / tooling gates
 - ✅ `package.json` has `typescript`, `eslint`, `eslint-plugin-powerbi-visuals`; real `description`
@@ -38,23 +39,22 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
   Bumped `powerbi-visuals-api` → `~5.11.0` (was `~5.3.0`) and `pbiviz.json` `apiVersion` → `5.11.0`;
   pbiviz tools already at the latest 7.1.0. Re-verified clean: dedup, standalone `tsc`, `npm test`
   (124), `pbiviz package`. **Re-check "latest" again at submission** (the floor moves over time).
-- ⬜ **`npm audit`** returns no **high/moderate** advisories.
-- ⬜ `pbiviz package --certification-audit` (pbiviz ≥6.1.0) reports clean. *(Only use
-  `--certification-fix` for forbidden calls inside third-party libs you don't control, then update
-  the `package` script to avoid a hash mismatch — never to mask our own code.)*
-- ⬜ **ESLint script form under ESLint 9.** The doc's example is `"eslint": "npx eslint . --ext
-  .js,.jsx,.ts,.tsx"`, but we're on ESLint ^9 (flat config), where `--ext` was removed and globs
-  live in `eslint.config.*`. Confirm the form reviewers expect before submitting.
+- ✅ **`npm audit`** — 0 vulnerabilities (verified 2026-06).
+- ✅ `pbiviz package --certification-audit` (pbiviz ≥6.1.0) — clean: "Certificate is valid", "No
+  external requests found", build OK (verified 2026-06). *(Only use `--certification-fix` for
+  forbidden calls inside third-party libs you don't control, then update the `package` script to avoid
+  a hash mismatch — never to mask our own code.)*
+- ✅ **ESLint script under ESLint 9.** Use `npm run lint` (`npx eslint .` — flat-config form; globs
+  live in `eslint.config.*`). Passes clean. The old `--ext` script (removed in v9) was deleted.
 
 ### Repo structure (cert prerequisite)
 - ✅ **Single-visual repository.** This repo (`spcControlChart`) contains code for *one visual only* —
   split out of the larger `spc-control-chart` dashboard project (which held the Power Query / DAX /
   CSV). Verified self-contained: `npm install`, `npm test` (124), and `pbiviz package` all pass here.
-- ⬜ **Push to a hosting provider** (e.g. GitHub) so the Power BI team can review it.
+- ✅ **Pushed to a hosting provider** — public at <https://github.com/vijaykoju/spcControlChart>.
 - ⬜ **`certification` branch** (lowercase) whose source exactly matches the submitted `.pbiviz`
   (create it from the commit you build the submitted package from).
-- ⬜ If private, create a review account with 2FA + recovery codes and grant **read-only** access to
-  [`pbicvsupport`](https://github.com/pbicvsupport).
+- ✅ **Repo is public** → no review-account / `pbicvsupport` access needed (that's only for private repos).
 
 ---
 
@@ -62,12 +62,50 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
 - ⬜ **Partner Center** publisher account.
 - ✅ **Support URL** — set in `pbiviz.json` to the repo's [`SUPPORT.md`](../SUPPORT.md)
   (`https://github.com/vijaykoju/spcControlChart/blob/main/SUPPORT.md`); `gitHubUrl` also set.
-- ⬜ **Privacy policy URL** — a Partner Center *listing* field (not in the package).
+- ⬜ **Privacy policy URL** — a Partner Center *listing* field (not in the package). `PRIVACY.md`
+  exists in-repo; use its blob URL: `https://github.com/vijaykoju/spcControlChart/blob/main/PRIVACY.md`.
 - ⬜ **Icons / screenshots** — 20×20 package icon (present and verified: `assets/icon.png`, 20×20 px),
-  plus a marketing icon and screenshots for the listing.
-- ⬜ **Long description** for the AppSource listing.
+  plus a marketing icon (300×300 PNG) and 1–5 screenshots (1280×720). See the shot-list below.
+- ⬜ **Long description** for the AppSource listing — draft below.
 - ⬜ **Sample `.pbix`** demonstrating the visual (use the project's sample data; the cert team also
   references the official SPC sample dataset).
+
+---
+
+## Listing copy (draft — review before submitting)
+
+**Suggested listing name:** SPC Control Charts *(plural — it's now a multi-family visual; a branding
+call, not required)*.
+
+**Summary (short):** Statistical process control charts for Power BI — individuals, attribute,
+subgroup, and time-weighted — with Western Electric rules. No DAX required.
+
+**Long description:**
+
+> **SPC Control Charts** brings rigorous statistical process control to Power BI — no DAX required.
+> Bind an axis and a measurement, pick a chart type in the Format pane, and the visual computes the
+> control limits, detects the signals, and flags out-of-control points for you.
+>
+> One visual, the full control-chart family:
+> - **Individuals (X-mR)** — with a moving-range companion panel and automatic phase / changepoint detection.
+> - **Attribute charts** — p, np, c, u — for defect proportions and counts, with per-point limits for varying sample sizes.
+> - **Subgroup charts** — X̄-R and X̄-s — each with a range / standard-deviation companion panel.
+> - **Time-weighted charts** — EWMA, moving average, and CUSUM — to catch the small, sustained shifts an individuals chart misses.
+>
+> Signal detection uses the eight **Western Electric / Nelson rules**, applied correctly per chart type
+> and individually toggleable, with an on-chart **rule reference** that explains each signal in plain
+> language. Plus zone shading, a bound target line, native tooltips, click cross-filtering, report-theme
+> color, and high-contrast support.
+>
+> Whether you're monitoring manufacturing quality, healthcare outcomes, service-level metrics, or any
+> repeated measurement over time, it turns a column of numbers into a decision-ready control chart.
+
+**Screenshot shot-list (1280×720; pick 3–5):**
+1. **Hero** — Individuals (X-mR) with the MR panel, a flagged violation, and a tooltip showing the rule reason. (The core value in one frame.)
+2. **Rule reference** — the on-chart panel open, listing enabled rules + plain-language reasons. (The differentiator.)
+3. **Breadth** — a p-chart (stepped per-point limits) or an X̄-R with its companion panel. (Shows it's multi-family.)
+4. **Advanced** — CUSUM (two arms about ±H) or EWMA with the faint raw-reading overlay. (Small-shift detection.)
+5. **Configurable / no-DAX** — the Format pane showing the chart-type selector + Chart Parameters. (Ease of use.)
 
 ---
 
