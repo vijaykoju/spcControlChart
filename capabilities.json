@@ -166,5 +166,6 @@
         }
     ],
     "supportsLandingPage": true,
+    "supportsEmptyDataView": true,
     "privileges": []
 }
