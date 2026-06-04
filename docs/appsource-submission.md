@@ -67,8 +67,9 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
 - ⬜ **Icons / screenshots** — 20×20 package icon (present and verified: `assets/icon.png`, 20×20 px),
   plus a marketing icon (300×300 PNG) and 1–5 screenshots (1280×720). See the shot-list below.
 - ⬜ **Long description** for the AppSource listing — draft below.
-- ⬜ **Sample `.pbix`** demonstrating the visual (use the project's sample data; the cert team also
-  references the official SPC sample dataset).
+- ⬜ **Sample `.pbix`** demonstrating the visual — build it from
+  [`test-data/demo-sample.csv`](test-data/demo-sample.csv) following [`demo-guide.md`](demo-guide.md)
+  (chart list + field bindings). The cert team also references the official SPC sample dataset.
 
 ---
 
