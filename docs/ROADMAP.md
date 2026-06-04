@@ -91,22 +91,35 @@ Two implications:
 - **Phase 3 — Time-weighted (EWMA, CUSUM, moving average).** ✅ Shipped. EWMA + moving average in
   2.2.0; CUSUM (two-arm tabular, decision interval ±H, own signal — no WE rules) in 2.3.0. Designs:
   [`phase3-design.md`](phase3-design.md), [`cusum-design.md`](cusum-design.md).
-- **Phase 4 — Capability display (Cp/Cpk/Pp/Ppk + histogram).** Most divergent rendering and inputs
-  (USL/LSL spec limits). **Decision:** likely a *separate visual* in this project rather than a mode
-  of the control chart.
+- **Phase 4 — Capability display (Cp/Cpk/Pp/Ppk + histogram). — ON HOLD (reassessed 2026-06; reads as
+  scope creep).** Capability is the *other half* of SPC ("is it stable?" → "is it capable?") and the
+  index management actually asks for, so the value is real. But it's deliberately **deferred**, for
+  three reasons:
+  - **It's a different visual, not an extension.** A capability display is a *distribution* (value
+    bins, no time axis) + spec-limit overlay — a new product, not a mode of the time-ordered control
+    chart. (The "separate visual" note was always there; this makes it the decision, not a footnote.)
+  - **It bends the charting-not-analysis principle.** The histogram is charting, but Cp/Cpk/Pp/Ppk are
+    *analysis output* (indices, not a chart) — the first item that crosses the line this package drew.
+  - **Misuse risk.** Capability is only valid on an in-control, ~normal process; a visual that prints a
+    Cpk on any data enables bad decisions. A responsible version needs stability + normality guardrails,
+    which pushes further into analysis territory.
 
-## Tech debt (pay before Phase 4)
+  **Decision:** do it only if the mission is "an SPC *toolkit*" (not "the best control chart"), and then
+  as a **separate, guard-railed visual** — *after* the control-charting work below, which is higher-fit
+  and lower-risk. If the mission stays "control charts," this can be skipped indefinitely without the
+  package feeling incomplete.
 
-- **Consolidate `prepare` + `computeLimits` → `build(raw, ctx)`.** The two-method strategy pipeline
-  makes derived-series charts (EWMA/MA/CUSUM) recompute their base stats (x̄/μ₀, σ) in both halves and
-  carries a hidden ordering contract. A single `build` computes them once. Pure refactor, no version
-  bump; staged behind a shim to keep the suite green. Design:
-  [`build-consolidation-design.md`](build-consolidation-design.md). Best done before Phase 4 piles on
-  a fifth family.
+## Tech debt
+
+- ✅ **Consolidated `prepare` + `computeLimits` → `build(raw, ctx)`** (shipped 2.3.0). Derived-series
+  charts (EWMA/MA/CUSUM) no longer recompute base stats in two halves, and the hidden ordering contract
+  is gone. Design: [`build-consolidation-design.md`](build-consolidation-design.md).
 
 ## Future ideas (unscheduled)
 
-Charting features worth doing eventually; not tied to a phase.
+Charting features worth doing eventually; not tied to a phase. These are **higher-fit and lower-risk
+than capability (Phase 4)** — squarely *control charting*, in-identity — so they come first if the
+package keeps growing.
 
 - **Raw companion panel for CUSUM.** CUSUM plots cumulative deviations on a 0-centered ±H scale, so
   the raw readings can't be *overlaid* the way they are on EWMA/MA (different units/scale — see
@@ -139,7 +152,8 @@ Charting features worth doing eventually; not tied to a phase.
 
 1. **Subgroup input:** pre-aggregated only for v1, or invest in the raw-grouping spike? *(Lean
    pre-agg.)*
-2. **Capability:** separate visual *(rec)* vs. a mode of this one?
+2. **Capability:** ✅ resolved — *separate, guard-railed visual*, and **deferred** as likely scope
+   creep (see Phase 4 above). Not a mode of this visual.
 3. **Release cadence:** ship per chart type (faster feedback, more re-certs) vs. batch a "2.0
    family." *(Lean incremental.)*
 
