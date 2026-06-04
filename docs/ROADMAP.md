@@ -84,7 +84,7 @@ Two implications:
   [`phase0-design.md`](phase0-design.md).
 - **Phase 1 — Attribute charts (p, np, c, u).** Count + Sample-size roles; four strategies;
   per-point limits for p/u; role validation + empty states; per-formula tests. *Highest
-  value-per-effort.*
+  value-per-effort.* Design: [`phase1-design.md`](phase1-design.md).
 - **Phase 2 — Subgroup charts (X̄-R, X̄-s).** Pre-aggregated input first; dispersion companion;
   constants by n; full rules on X̄. (Spike the raw-row grouping path in parallel.)
 - **Phase 3 — Time-weighted (EWMA, CUSUM, moving average).** Own statistic + signal logic; renderer

@@ -7,7 +7,7 @@ import { StatsOptions } from "./spc/statistics";
 import { ChangepointOptions } from "./spc/changepoint";
 import { ChartType } from "./spc/chartType";
 
-const CHART_TYPES: ChartType[] = ["individuals"];
+const CHART_TYPES: ChartType[] = ["individuals", "p", "np", "c", "u"];
 
 /** Chart card → chart type. Guards an unknown dropdown value to "individuals". */
 export function toChartType(value: string): ChartType {
