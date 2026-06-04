@@ -39,6 +39,8 @@ export interface DataPoint {
     sampleSize?: number | null;
     /** Attribute charts: raw defect/defective count, preserved by `prepare` so the center is exact. */
     count?: number | null;
+    /** Subgroup charts: the subgroup's range (X̄-R) or std dev (X̄-s). null = blank. */
+    spread?: number | null;
 }
 
 /** Control-chart statistics for one phase (or the whole-dataset fallback). */

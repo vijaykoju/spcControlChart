@@ -60,16 +60,23 @@ export function buildMrTooltipItems(
     fmt: (n: number) => string,
     axisName: string
 ): VisualTooltipDataItem[] {
-    const c = limits.companion?.limits[point.index - 1];
+    const comp = limits.companion;
+    const c = comp?.limits[point.index - 1];
+    const v = comp?.value[point.index - 1];
+    // Keep the moving-range wording for the MR case; R/s charts use the companion's title.
+    const isMr = comp?.kind === "mr";
+    const valLabel = isMr ? "Moving range" : (comp?.axisTitle ?? "Value");
+    const centerLabel = isMr ? "MR center (MR̄)" : `${comp?.axisTitle} center`;
     const items: VisualTooltipDataItem[] = [
         { displayName: axisName || "Axis", value: point.label },
-        { displayName: "Moving range", value: fmt(point.movingRange as number) },
+        { displayName: valLabel, value: fmt(v as number) },
     ];
     if (c) {
         items.push(
-            { displayName: "MR center (MR̄)", value: fmt(c.center) },
-            { displayName: "MR UCL", value: fmt(c.ucl) },
+            { displayName: centerLabel, value: fmt(c.center) },
+            { displayName: isMr ? "MR UCL" : `${comp?.axisTitle} UCL`, value: fmt(c.ucl) },
         );
+        if (c.lcl > 0) items.push({ displayName: `${comp?.axisTitle} LCL`, value: fmt(c.lcl) });
     }
     return items;
 }

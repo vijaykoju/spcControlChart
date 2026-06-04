@@ -16,6 +16,8 @@ export interface SeriesPoint {
     target?: number | null;
     /** Bound sample size (nᵢ) for attribute charts; null = blank/invalid; undefined = unbound. */
     sampleSize?: number | null;
+    /** Bound subgroup range/std dev for X̄-R/X̄-s; null = blank; undefined = unbound. */
+    spread?: number | null;
     /** Original categorical row index (pre-sort) — for building the selection id. */
     categoryIndex: number;
 }
@@ -46,6 +48,7 @@ export function extractSeries(dataView: powerbi.DataView): SeriesPoint[] {
     const tooltipCols = cols.filter(c => c.source?.roles?.tooltips);
     const targetCol = cols.find(c => c.source?.roles?.target);
     const sampleSizeCol = cols.find(c => c.source?.roles?.sampleSize);
+    const spreadCol = cols.find(c => c.source?.roles?.spread);
 
     const primary = categories[0];
     const meas = measure.values ?? [];
@@ -56,7 +59,7 @@ export function extractSeries(dataView: powerbi.DataView): SeriesPoint[] {
     const isNumeric = !!(type?.numeric || type?.integer);
     const orderable = categories.length === 1 && (isDate || isNumeric);
 
-    const pairs: { key: number; label: string; value: number | null; tooltips?: TooltipField[]; target?: number | null; sampleSize?: number | null; categoryIndex: number }[] = [];
+    const pairs: { key: number; label: string; value: number | null; tooltips?: TooltipField[]; target?: number | null; sampleSize?: number | null; spread?: number | null; categoryIndex: number }[] = [];
     for (let i = 0; i < n; i++) {
         const m = meas[i];
         // Blank/non-numeric measure → null (a gap slot kept on the axis), NOT dropped.
@@ -77,12 +80,14 @@ export function extractSeries(dataView: powerbi.DataView): SeriesPoint[] {
         // Sample size (attribute charts); blank/non-numeric → null (the strategy treats ≤0/null as a gap).
         const ss = sampleSizeCol?.values?.[i];
         const sampleSize = sampleSizeCol ? (typeof ss === "number" && Number.isFinite(ss) ? ss : null) : undefined;
-        pairs.push({ key: orderable ? orderKey(primary.values[i], isDate) : i, value, label, tooltips, target, sampleSize, categoryIndex: i });
+        const sp = spreadCol?.values?.[i];
+        const spread = spreadCol ? (typeof sp === "number" && Number.isFinite(sp) ? sp : null) : undefined;
+        pairs.push({ key: orderable ? orderKey(primary.values[i], isDate) : i, value, label, tooltips, target, sampleSize, spread, categoryIndex: i });
     }
 
     if (orderable) pairs.sort((a, b) => a.key - b.key);
 
-    return pairs.map(p => ({ label: p.label, value: p.value, tooltips: p.tooltips, target: p.target, sampleSize: p.sampleSize, categoryIndex: p.categoryIndex }));
+    return pairs.map(p => ({ label: p.label, value: p.value, tooltips: p.tooltips, target: p.target, sampleSize: p.sampleSize, spread: p.spread, categoryIndex: p.categoryIndex }));
 }
 
 /** Numeric sort key; unparseable values sort last (stable, deterministic). */

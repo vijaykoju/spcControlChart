@@ -27,7 +27,7 @@ function floorAtZero(value: number): number {
  * Input is assumed already sorted ascending by date.
  */
 export function buildDataPoints(
-    raw: { label: string; value: number | null; tooltips?: TooltipField[]; target?: number | null; sampleSize?: number | null; categoryIndex: number }[]
+    raw: { label: string; value: number | null; tooltips?: TooltipField[]; target?: number | null; sampleSize?: number | null; spread?: number | null; categoryIndex: number }[]
 ): DataPoint[] {
     // Input is in observation order (extractData sorts date/number axes; text axes keep delivered
     // order). EVERY row is kept as a slot, including blank-measure rows (value === null = a gap):
@@ -41,7 +41,7 @@ export function buildDataPoints(
         const movingRange = realPair ? Math.abs((r.value as number) - (prev as number)) : null;
         const direction = !realPair ? null
             : (r.value as number) > (prev as number) ? 1 : (r.value as number) < (prev as number) ? -1 : 0;
-        return { index: i + 1, label: r.label, value: r.value, movingRange, prevValue, direction, tooltips: r.tooltips, target: r.target, sampleSize: r.sampleSize, categoryIndex: r.categoryIndex };
+        return { index: i + 1, label: r.label, value: r.value, movingRange, prevValue, direction, tooltips: r.tooltips, target: r.target, sampleSize: r.sampleSize, spread: r.spread, categoryIndex: r.categoryIndex };
     });
 }
 

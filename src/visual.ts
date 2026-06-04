@@ -32,13 +32,15 @@ import { resolveChartColors } from "./theme";
 /** Stable palette key for the themed data-line default (so it doesn't shift with the measure name). */
 const THEME_LINE_KEY = "spcLine";
 
-/** Message for the empty state, naming what's missing where possible. */
+/** Message for the empty state, naming what's missing where possible. A leading line nudges users
+ *  to pick the chart type (in Format) first; the `\n` renders as a second line. */
 function emptyMessage(dataView: DataView | undefined): string {
     const hasAxis = !!dataView?.categorical?.categories?.length;
     const hasMeasure = hasMeasureColumn(dataView);
-    if (!hasAxis && !hasMeasure) return "Add an axis field and a measurement";
-    if (!hasAxis) return "Add an axis field";
-    if (!hasMeasure) return "Add a measurement";
+    const lead = "SPC Chart\nPick a Chart type in the Format panel,\nthen add ";
+    if (!hasAxis && !hasMeasure) return `${lead}an axis field and a measurement`;
+    if (!hasAxis) return `${lead}an axis field`;
+    if (!hasMeasure) return `${lead}a measurement`;
     return "No valid data points";
 }
 
@@ -49,9 +51,12 @@ function roleBound(dataView: DataView | undefined, role: string): boolean {
 
 const CHART_TYPE_LABELS: Record<string, string> = {
     individuals: "Individuals chart", p: "p-chart", np: "np-chart", c: "c-chart", u: "u-chart",
+    "xbar-r": "X̄-R chart", "xbar-s": "X̄-s chart",
 };
 const chartTypeLabel = (id: string) => CHART_TYPE_LABELS[id] ?? "This chart";
-const ROLE_LABELS: Record<string, string> = { sampleSize: "Sample size" };
+const ROLE_LABELS: Record<string, string> = {
+    sampleSize: "Sample size", spread: "Subgroup range or std dev",
+};
 const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
 
 export class Visual implements IVisual {
@@ -111,6 +116,9 @@ export class Visual implements IVisual {
             } else if (!points.some(p => p.value !== null)) {
                 // e.g. a p/u chart whose sample sizes are all ≤ 0 / blank → every point gapped.
                 renderMessage(this.svg, "No valid sample sizes", width, height);
+            } else if (strategy.validate?.(points)) {
+                // Per-type validation, e.g. subgroup size out of range for X̄-R/X̄-s.
+                renderMessage(this.svg, strategy.validate(points)!, width, height);
             } else {
                 const cp = toChangepointOptions(
                     s.phaseDetection.enableDetection.value,

@@ -39,3 +39,7 @@ checklist covers the **rendering** edges the unit tests can't exercise. Import t
 | 25 | **Attribute chart missing Sample size** (p/np/u) | Empty-state prompt ("p-chart needs a Sample size field"); no error, no wrong limits. |
 | 26 | **Attribute chart with a 0 / blank sample size row** | That row is a **gap** (no marker, limits stay finite — no NaN/Infinity breaking the Y-scale). |
 | 27 | **Switch chart type back to Individuals** | Renders identically to before (X-mR + MR panel); the Sample size binding is ignored. |
+| 28 | **Chart type = X̄-R / X̄-s** (Measurement = subgroup mean, Subgroup range/std-dev bound, Sample size = m) | X̄ chart with `x̄̄ ± A₂R̄` (or `A₃s̄`) limits + full WE rules; companion **R/s panel** with its own center/UCL/**LCL** (LCL drawn only when > 0, i.e. m ≥ 7 for R); a range/std-dev beyond either limit flags. |
+| 29 | **X̄-R/X̄-s missing Subgroup range/std-dev or Sample size** | Empty-state prompt for the missing role; no wrong limits. |
+| 30 | **X̄-R/X̄-s with subgroup size m outside 2–25 (or non-integer)** | "Subgroup size must be a whole number from 2 to 25" prompt. |
+| 31 | **Individuals MR panel after Phase 2** | Unchanged — the companion panel still shows "Moving range", no LCL line (LCL = 0), same tooltip wording. |
