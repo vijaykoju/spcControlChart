@@ -89,7 +89,7 @@ Two implications:
   constants by n; full rules on X̄. (Spike the raw-row grouping path in parallel.) Design:
   [`phase2-design.md`](phase2-design.md).
 - **Phase 3 — Time-weighted (EWMA, CUSUM, moving average).** Own statistic + signal logic; renderer
-  tweaks (CUSUM is cumulative).
+  tweaks (CUSUM is cumulative). Design: [`phase3-design.md`](phase3-design.md).
 - **Phase 4 — Capability display (Cp/Cpk/Pp/Ppk + histogram).** Most divergent rendering and inputs
   (USL/LSL spec limits). **Decision:** likely a *separate visual* in this project rather than a mode
   of the control chart.

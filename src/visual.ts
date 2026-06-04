@@ -51,7 +51,7 @@ function roleBound(dataView: DataView | undefined, role: string): boolean {
 
 const CHART_TYPE_LABELS: Record<string, string> = {
     individuals: "Individuals chart", p: "p-chart", np: "np-chart", c: "c-chart", u: "u-chart",
-    "xbar-r": "X̄-R chart", "xbar-s": "X̄-s chart",
+    "xbar-r": "X̄-R chart", "xbar-s": "X̄-s chart", ewma: "EWMA chart", ma: "Moving-average chart",
 };
 const chartTypeLabel = (id: string) => CHART_TYPE_LABELS[id] ?? "This chart";
 const ROLE_LABELS: Record<string, string> = {
@@ -103,10 +103,24 @@ export class Visual implements IVisual {
             const rawPoints = dataView ? buildDataPoints(extractSeries(dataView)) : [];
             const s = this.formattingSettings;
             const strategy = STRATEGIES[toChartType(String(s.chart.chartType.value.value))];
+            // The full context (stats + changepoint + time-weighted params) is built up front because
+            // prepare, validate, and computeLimits all consume it.
+            const ctx = {
+                opts: toStatsOpts(s.controlLimits.sigmaMultiplier.value, s.controlLimits.floorLcl.value),
+                changepoint: toChangepointOptions(
+                    s.phaseDetection.enableDetection.value,
+                    s.phaseDetection.significanceThreshold.value,
+                    s.phaseDetection.minSegment.value,
+                    s.phaseDetection.useManualChangepoint.value,
+                    s.phaseDetection.manualChangepoint.value,
+                ),
+                ewmaLambda: s.chartParameters.ewmaLambda.value,
+                maWindow: s.chartParameters.maWindow.value,
+            };
             // Attribute charts need a Sample size (p/np/u) — prompt rather than render wrong limits.
             const missingRole = (strategy.requiredRoles ?? []).find(r => !roleBound(dataView, r));
-            // The strategy derives the plotted series (e.g. count/n for p/u, gapping invalid n).
-            const points = strategy.prepare(rawPoints);
+            // The strategy derives the plotted series (count/n for p/u, a smoothed value for EWMA/MA).
+            const points = strategy.prepare(rawPoints, ctx);
             // Gaps (blank-measure rows) are kept as slots, so length > 0 no longer implies drawable
             // data — require at least one real (non-null) value, else show the empty state.
             if (!rawPoints.some(p => p.value !== null)) {
@@ -116,20 +130,11 @@ export class Visual implements IVisual {
             } else if (!points.some(p => p.value !== null)) {
                 // e.g. a p/u chart whose sample sizes are all ≤ 0 / blank → every point gapped.
                 renderMessage(this.svg, "No valid sample sizes", width, height);
-            } else if (strategy.validate?.(points)) {
-                // Per-type validation, e.g. subgroup size out of range for X̄-R/X̄-s.
-                renderMessage(this.svg, strategy.validate(points)!, width, height);
+            } else if (strategy.validate?.(points, ctx)) {
+                // Per-type validation: subgroup size out of range, bad EWMA λ / MA window, etc.
+                renderMessage(this.svg, strategy.validate(points, ctx)!, width, height);
             } else {
-                const cp = toChangepointOptions(
-                    s.phaseDetection.enableDetection.value,
-                    s.phaseDetection.significanceThreshold.value,
-                    s.phaseDetection.minSegment.value,
-                    s.phaseDetection.useManualChangepoint.value,
-                    s.phaseDetection.manualChangepoint.value,
-                );
-                const statsOpts = toStatsOpts(
-                    s.controlLimits.sigmaMultiplier.value, s.controlLimits.floorLcl.value);
-                const limits = strategy.computeLimits(points, { opts: statsOpts, changepoint: cp });
+                const limits = strategy.computeLimits(points, ctx);
                 // A chart type can only fire rules that apply to it.
                 const enabledRules = applicableEnabledRules(
                     toEnabledRules(s.rules.ruleToggles.map(t => t.value)), strategy.applicableRules);
@@ -210,9 +215,16 @@ export class Visual implements IVisual {
                         zoneC: colors.zoneC,
                     },
                     showZones: a.showZones.value,
+                    zonesMeaningful: strategy.zonesMeaningful,
+                    showRawReadings: s.chartParameters.showRaw.value,
+                    rawColor: s.chartParameters.rawColor.value.value,
+                    rawOpacity: s.chartParameters.rawOpacity.value / 100,
+                    rawSize: s.chartParameters.rawSize.value,
                     showZoneLabels: a.showZoneLabels.value,
                     violationShape: String(a.violationShape.value.value),
                     pointShape: String(a.pointShape.value.value),
+                    pointSize: a.pointSize.value,
+                    pointOpacity: a.pointOpacity.value / 100,
                     showPhaseChangeLine: an.showPhaseChangeLine.value,
                     phaseChangeColor: colors.phaseChange,
                     showTargetLine: an.showTargetLine.value,

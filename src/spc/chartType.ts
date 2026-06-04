@@ -13,7 +13,7 @@ import { DataPoint, SpcStatistics } from "./types";
 import { PhaseSegment, StatsOptions } from "./statistics";
 import { ChangepointOptions } from "./changepoint";
 
-export type ChartType = "individuals" | "p" | "np" | "c" | "u" | "xbar-r" | "xbar-s";
+export type ChartType = "individuals" | "p" | "np" | "c" | "u" | "xbar-r" | "xbar-s" | "ewma" | "ma";
 
 /** Resolve the limits that apply to a given point — the single accessor the rule engine uses. */
 export type LimitsAccessor = (p: DataPoint) => SpcStatistics;
@@ -53,6 +53,9 @@ export interface LimitModel {
     companion: CompanionModel | null;
     /** True when limits change per point (p/u) → stepped rendering; false → per-segment lines. */
     varyingLimits: boolean;
+    /** With varyingLimits, draw the limit lines as a connected (linear) envelope rather than the
+     *  stepped p/u staircase — for the smoothly-widening EWMA/MA limits. Default: stepped. */
+    smoothLimits?: boolean;
 }
 
 /** Everything a strategy needs beyond the points. Opaque to the caller, so individuals-only
@@ -61,6 +64,10 @@ export interface LimitModel {
 export interface ChartContext {
     opts: StatsOptions;
     changepoint?: ChangepointOptions;
+    /** EWMA smoothing weight λ ∈ (0,1]. */
+    ewmaLambda?: number;
+    /** Moving-average window size. */
+    maWindow?: number;
 }
 
 export interface ChartStrategy {
@@ -72,17 +79,18 @@ export interface ChartStrategy {
     /** Data roles that must be bound for this chart type (drives the empty-state prompt). */
     requiredRoles?: ("sampleSize" | "spread")[];
     /** Optional per-type validation on the prepared points; return a message to show instead of the
-     *  chart (e.g. subgroup size out of range), or null when valid. */
-    validate?(points: DataPoint[]): string | null;
+     *  chart (e.g. subgroup size out of range, bad λ/window), or null when valid. */
+    validate?(points: DataPoint[], ctx: ChartContext): string | null;
     /** Axis/label name for the plotted statistic when it isn't the bound measure (p/u plot a
      *  proportion/rate, not the count). Falls back to the measure's display name. */
     valueLabel?: string;
     /** Number-format string for the plotted statistic, overriding the measure's format (the count's
      *  integer format would render a proportion as "0"). Falls back to the measure's format. */
     valueFormat?: string;
-    /** Derive the plotted series: `.value` becomes the plotted statistic (e.g. count/n for p/u);
-     *  must preserve all other DataPoint fields. Default: identity (individuals). */
-    prepare(raw: DataPoint[]): DataPoint[];
+    /** Derive the plotted series: `.value` becomes the plotted statistic (e.g. count/n for p/u, or a
+     *  smoothed value for EWMA/MA using ctx params); must preserve all other DataPoint fields.
+     *  Default: identity (individuals). */
+    prepare(raw: DataPoint[], ctx: ChartContext): DataPoint[];
     /** Compute per-point limits (+ segments + companion) for the prepared points. */
     computeLimits(points: DataPoint[], ctx: ChartContext): LimitModel;
 }

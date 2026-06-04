@@ -41,6 +41,9 @@ export interface DataPoint {
     count?: number | null;
     /** Subgroup charts: the subgroup's range (X̄-R) or std dev (X̄-s). null = blank. */
     spread?: number | null;
+    /** Time-weighted charts (EWMA/MA): the raw reading, preserved by `prepare` (which overwrites
+     *  `value` with the smoothed statistic) so `computeLimits` can recover x̄ / σ. */
+    baseValue?: number | null;
 }
 
 /** Control-chart statistics for one phase (or the whole-dataset fallback). */

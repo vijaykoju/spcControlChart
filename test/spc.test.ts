@@ -7,12 +7,13 @@
  */
 
 import { extractSeries, hasMeasureColumn } from "../src/extractData";
-import { buildDataPoints, computePhasedStatistics, mrLimits, D4 } from "../src/spc/statistics";
+import { buildDataPoints, computePhasedStatistics, mrLimits, D4, D2 } from "../src/spc/statistics";
 import { detectChangepoint, resolveChangepoint } from "../src/spc/changepoint";
 import { evaluateRules, RULES } from "../src/spc/rules";
 import { modelFromPhased, individualsStrategy } from "../src/spc/strategies/individuals";
 import { pStrategy, npStrategy, cStrategy, uStrategy } from "../src/spc/strategies/attribute";
 import { xbarRStrategy, xbarSStrategy } from "../src/spc/strategies/subgroup";
+import { ewmaStrategy, maStrategy } from "../src/spc/strategies/timeWeighted";
 import { constantsFor } from "../src/spc/constants";
 import { limitsFromModel, companionViolations } from "../src/spc/chartType";
 import { DataPoint, PhasedStatistics } from "../src/spc/types";
@@ -248,7 +249,7 @@ check("individuals strategy emits per-point limits + MR companion aligned to poi
 // ============================================================ attribute charts (Phase 1)
 const attr = (strategy: typeof pStrategy, values: (number | null)[], sizes?: (number | null)[]) => {
     const raw = buildDataPoints(values.map((v, i) => ({ label: "m" + i, value: v, categoryIndex: i, sampleSize: sizes ? sizes[i] : undefined })));
-    const pts = strategy.prepare(raw);
+    const pts = strategy.prepare(raw, { opts: {} });
     return { pts, model: strategy.computeLimits(pts, { opts: {} }) };
 };
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-3;
@@ -301,7 +302,7 @@ check("constants: out of range / non-integer -> null", constantsFor(1) === null 
 
 const sub = (strategy: typeof xbarRStrategy, means: number[], spreads: number[], m: number) => {
     const raw = buildDataPoints(means.map((v, i) => ({ label: "g" + i, value: v, categoryIndex: i, sampleSize: m, spread: spreads[i] })));
-    const pts = strategy.prepare(raw);
+    const pts = strategy.prepare(raw, { opts: {} });
     return { pts, model: strategy.computeLimits(pts, { opts: {} }) };
 };
 
@@ -333,20 +334,73 @@ const cviol = companionViolations(xrLow.model.companion!);
 check("X̄-R: range below LCL (m≥7) flags the companion", cviol[6] === true && cviol[0] === false);
 
 // validation: invalid subgroup size → message; valid → null.
+const noCtx = { opts: {} };
 check("X̄-R validate: subgroup size out of range",
-    typeof xbarRStrategy.validate!(sub(xbarRStrategy, [10, 10], [1, 1], 1).pts) === "string" &&
-    xbarRStrategy.validate!(sub(xbarRStrategy, [10, 10], [1, 1], 5).pts) === null);
+    typeof xbarRStrategy.validate!(sub(xbarRStrategy, [10, 10], [1, 1], 1).pts, noCtx) === "string" &&
+    xbarRStrategy.validate!(sub(xbarRStrategy, [10, 10], [1, 1], 5).pts, noCtx) === null);
 // validation: non-constant m and all-blank spread are rejected.
 const varM = buildDataPoints([
     { label: "g0", value: 10, categoryIndex: 0, sampleSize: 5, spread: 4 },
     { label: "g1", value: 11, categoryIndex: 1, sampleSize: 4, spread: 4 },
 ]);
-check("X̄-R validate: non-constant subgroup size rejected", typeof xbarRStrategy.validate!(varM) === "string");
+check("X̄-R validate: non-constant subgroup size rejected", typeof xbarRStrategy.validate!(varM, noCtx) === "string");
 const noSpread = buildDataPoints([
     { label: "g0", value: 10, categoryIndex: 0, sampleSize: 5, spread: null },
     { label: "g1", value: 11, categoryIndex: 1, sampleSize: 5, spread: null },
 ]);
-check("X̄-R validate: all-blank spread rejected", typeof xbarRStrategy.validate!(noSpread) === "string");
+check("X̄-R validate: all-blank spread rejected", typeof xbarRStrategy.validate!(noSpread, noCtx) === "string");
+
+// ============================================================ time-weighted charts (Phase 3)
+const tw = (strategy: typeof ewmaStrategy, values: (number | null)[], params: { ewmaLambda?: number; maWindow?: number }) => {
+    const raw = buildDataPoints(values.map((v, i) => ({ label: "t" + i, value: v, categoryIndex: i })));
+    const ctx = { opts: {}, ...params };
+    const pts = strategy.prepare(raw, ctx);
+    return { pts, model: strategy.computeLimits(pts, ctx) };
+};
+
+// EWMA, λ=0.5, x̄=10: z = [10, 11, 9.5, 10.25, 9.625]; limits widen.
+const ew = tw(ewmaStrategy, [10, 12, 8, 11, 9], { ewmaLambda: 0.5 });
+const ewSigma = (11 / 4) / D2; // MR̄ / d₂
+check("EWMA: z series", near(ew.pts[0].value as number, 10) && near(ew.pts[1].value as number, 11) &&
+    near(ew.pts[2].value as number, 9.5) && near(ew.pts[4].value as number, 9.625));
+check("EWMA: widening σ_z limits, smooth + no companion",
+    near(ew.model.perPoint[0].ucl, 10 + 3 * ewSigma * Math.sqrt((0.5 / 1.5) * (1 - 0.25))) &&
+    ew.model.perPoint[4].ucl > ew.model.perPoint[0].ucl &&
+    ew.model.varyingLimits === true && ew.model.smoothLimits === true && ew.model.companion === null);
+check("EWMA: baseValue preserves the raw reading", ew.pts[1].baseValue === 12);
+
+// EWMA gap: a blank reading carries z forward; limits stay finite.
+const ewGap = tw(ewmaStrategy, [10, null, 12, 11], { ewmaLambda: 0.5 });
+check("EWMA: gap carries forward, no NaN",
+    ewGap.pts[1].value === null && near(ewGap.pts[0].value as number, 10.5) &&
+    near(ewGap.pts[2].value as number, 11.25) && Number.isFinite(ewGap.model.perPoint[1].ucl));
+
+// Moving average, w=3, x̄=10: MA = [10, 11, 10, 10.333, 9.333]; limits narrow as the window fills.
+const ma = tw(maStrategy, [10, 12, 8, 11, 9], { maWindow: 3 });
+const maSigma = (11 / 4) / D2;
+check("MA: window means (partial then full)",
+    near(ma.pts[0].value as number, 10) && near(ma.pts[1].value as number, 11) &&
+    near(ma.pts[2].value as number, 10) && near(ma.pts[4].value as number, 28 / 3));
+check("MA: limits widen at the start (1/√count → 1/√w)",
+    near(ma.model.perPoint[0].ucl, 10 + 3 * maSigma) && near(ma.model.perPoint[2].ucl, 10 + 3 * maSigma / Math.sqrt(3)) &&
+    ma.model.perPoint[0].ucl > ma.model.perPoint[2].ucl);
+
+// validation + rule set
+check("EWMA/MA validate λ and window",
+    typeof ewmaStrategy.validate!(ew.pts, { opts: {}, ewmaLambda: 0 }) === "string" &&
+    ewmaStrategy.validate!(ew.pts, { opts: {}, ewmaLambda: 0.3 }) === null &&
+    typeof maStrategy.validate!(ma.pts, { opts: {}, maWindow: 1 }) === "string" &&
+    maStrategy.validate!(ma.pts, { opts: {}, maWindow: 3 }) === null);
+check("EWMA/MA applicableRules = {1} (autocorrelated → beyond-limit only)",
+    eq([...applicableEnabledRules(new Set([1, 2, 3, 4]), ewmaStrategy.applicableRules)], [1]) &&
+    eq([...applicableEnabledRules(new Set([1, 2, 3, 4]), maStrategy.applicableRules)], [1]));
+
+// end-to-end: a sustained shift drives EWMA past its limits → Beyond Limits fires, and ONLY rule 1.
+const ewShift = tw(ewmaStrategy, [10, 10, 10, 10, 10, 20, 20, 20, 20, 20], { ewmaLambda: 0.5 });
+const ewShiftRes = evaluateRules(ewShift.pts, limitsFromModel(ewShift.model), ewmaStrategy.applicableRules);
+check("EWMA: sustained shift fires rule 1 (and only rule 1)",
+    ewShiftRes.some(r => r.firedRules.includes(1)) && ewShiftRes.every(r => r.firedRules.every(id => id === 1)),
+    ewShiftRes.map(r => r.firedRules));
 
 // ============================================================ tooltip (m9/m13)
 
@@ -403,7 +457,8 @@ check("toSidePosition passthrough + guard",
 check("toChartType passthrough + guard",
     toChartType("individuals") === "individuals" && toChartType("p") === "p" &&
     toChartType("u") === "u" && toChartType("xbar-r") === "xbar-r" &&
-    toChartType("xbar-s") === "xbar-s" && toChartType("xyz") === "individuals");
+    toChartType("xbar-s") === "xbar-s" && toChartType("ewma") === "ewma" &&
+    toChartType("ma") === "ma" && toChartType("xyz") === "individuals");
 // rule applicability: user-enabled ∩ chart-type-applicable
 check("applicableEnabledRules intersects enabled with applicable",
     eq([...applicableEnabledRules(new Set([1, 2, 3, 8]), new Set([1, 3, 4]))].sort(), [1, 3]));
