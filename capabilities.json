@@ -21,8 +21,13 @@
             "kind": "Measure"
         },
         {
-            "displayName": "Sample size (attribute charts)",
+            "displayName": "Sample size / subgroup size",
             "name": "sampleSize",
+            "kind": "Measure"
+        },
+        {
+            "displayName": "Subgroup range or std dev",
+            "name": "spread",
             "kind": "Measure"
         }
     ],
@@ -121,7 +126,8 @@
                     "category": { "max": 1 },
                     "measure": { "max": 1 },
                     "target": { "max": 1 },
-                    "sampleSize": { "max": 1 }
+                    "sampleSize": { "max": 1 },
+                    "spread": { "max": 1 }
                 }
             ],
             "categorical": {
@@ -138,11 +144,13 @@
                         { "bind": { "to": "measure" } },
                         { "bind": { "to": "target" } },
                         { "bind": { "to": "sampleSize" } },
+                        { "bind": { "to": "spread" } },
                         { "for": { "in": "tooltips" } }
                     ]
                 }
             }
         }
     ],
+    "supportsLandingPage": true,
     "privileges": []
 }

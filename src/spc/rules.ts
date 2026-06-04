@@ -26,6 +26,9 @@ export interface RuleDefinition {
     check: RuleCheck;
 }
 
+// Per chart type, only a subset of these apply (see each ChartStrategy.applicableRules): individuals
+// and the X̄ subgroup charts use all 8; attribute charts (p/np/c/u) use {1,4}; dispersion companions
+// (MR/R/s) use beyond-limit only.
 // References the hoisted rule function declarations below — single source of truth for the
 // id -> (name, tooltip, description, check) mapping. `tooltip` is the terse wording shown on a
 // flagged point; `description` is the fuller panel wording. docs/rules.md is the deeper reference.

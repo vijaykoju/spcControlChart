@@ -2,6 +2,7 @@
 import { ChartType, ChartStrategy } from "../chartType";
 import { individualsStrategy } from "./individuals";
 import { pStrategy, npStrategy, cStrategy, uStrategy } from "./attribute";
+import { xbarRStrategy, xbarSStrategy } from "./subgroup";
 
 export const STRATEGIES: Record<ChartType, ChartStrategy> = {
     individuals: individualsStrategy,
@@ -9,4 +10,6 @@ export const STRATEGIES: Record<ChartType, ChartStrategy> = {
     np: npStrategy,
     c: cStrategy,
     u: uStrategy,
+    "xbar-r": xbarRStrategy,
+    "xbar-s": xbarSStrategy,
 };

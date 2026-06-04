@@ -24,6 +24,8 @@ const CHART_TYPE_ITEMS: powerbi.IEnumMember[] = [
     { value: "np", displayName: "np (number defective)" },
     { value: "c", displayName: "c (count of defects)" },
     { value: "u", displayName: "u (defects per unit)" },
+    { value: "xbar-r", displayName: "X̄-R (mean & range)" },
+    { value: "xbar-s", displayName: "X̄-s (mean & std dev)" },
 ];
 
 /** Marker shape options (keys must match the SYMBOLS map in chart.ts). */

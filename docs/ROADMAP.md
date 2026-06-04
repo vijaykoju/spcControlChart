@@ -86,7 +86,8 @@ Two implications:
   per-point limits for p/u; role validation + empty states; per-formula tests. *Highest
   value-per-effort.* Design: [`phase1-design.md`](phase1-design.md).
 - **Phase 2 — Subgroup charts (X̄-R, X̄-s).** Pre-aggregated input first; dispersion companion;
-  constants by n; full rules on X̄. (Spike the raw-row grouping path in parallel.)
+  constants by n; full rules on X̄. (Spike the raw-row grouping path in parallel.) Design:
+  [`phase2-design.md`](phase2-design.md).
 - **Phase 3 — Time-weighted (EWMA, CUSUM, moving average).** Own statistic + signal logic; renderer
   tweaks (CUSUM is cumulative).
 - **Phase 4 — Capability display (Cp/Cpk/Pp/Ppk + histogram).** Most divergent rendering and inputs

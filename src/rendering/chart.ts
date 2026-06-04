@@ -234,7 +234,8 @@ export function renderChart(
     // otherwise (tiny viewport) fall back to the single full-height chart (no inverted scale).
     const mainHFull = (innerH - MR_GAP) * (1 - mrRatio);
     const mrHFull = (innerH - MR_GAP) * mrRatio;
-    const mrEnabled = model.showMrChart !== false && points.some(p => p.movingRange != null)
+    // Panel visibility tracks the companion (MR / R / s), not the MR-specific field.
+    const mrEnabled = model.showMrChart !== false && (limits.companion?.value.some(v => v != null) ?? false)
         && mainHFull >= 40 && mrHFull >= 16;
     const mainH = mrEnabled ? mainHFull : innerH;
     const mrTop = mainH + MR_GAP;
@@ -767,9 +768,11 @@ function drawMrChart(
     const pad = upper > 0 ? upper * 0.05 : 1; // all-zero MR (flat data) has no magnitude → 1
     const mrY = d3.scaleLinear().domain([0, upper + pad]).range([mrH, 0]);
 
-    // Stepped companion center + UCL per phase segment (reusing the shared x-ranges; LCL = 0 baseline).
+    // Stepped companion center + UCL (+ LCL when > 0; for MR the LCL is the 0 baseline, not drawn)
+    // per phase segment, reusing the shared x-ranges.
     for (const seg of segPixels) {
         const lines: [number, string][] = [[seg.companion?.center ?? 0, colors.center], [seg.companion?.ucl ?? 0, colors.limit]];
+        if ((seg.companion?.lcl ?? 0) > 0) lines.push([seg.companion!.lcl, colors.limit]);
         for (const [val, color] of lines) {
             mrG.append("line")
                 .attr("x1", seg.x0).attr("x2", seg.x1)
@@ -785,17 +788,19 @@ function drawMrChart(
 
     drawAxes(mrG, x, mrY, points, mrH, formatValue, true, 3);
 
-    // MR line breaks at the null first point; markers only where a moving range exists.
-    const withMr = points.filter(p => p.movingRange != null);
-    const line = d3.line<DataPoint>().defined(p => p.movingRange != null)
-        .x(xPos).y(p => mrY(p.movingRange as number));
+    // Plot the companion series (MR / range / std dev), aligned to points by 1-based index. Breaks
+    // at gaps; markers only where a value exists.
+    const cv = (p: DataPoint) => companion.value[p.index - 1];
+    const withMr = points.filter(p => cv(p) != null);
+    const line = d3.line<DataPoint>().defined(p => cv(p) != null)
+        .x(xPos).y(p => mrY(cv(p) as number));
     mrG.append("path").datum(points).attr("class", "spc-mr-line").attr("d", line)
         .attr("fill", "none").attr("stroke", colors.line).attr("stroke-width", 2);
 
     const pointSymbol = d3.symbol().type(symbolFor(pointShape, d3.symbolCircle)).size(30);
     const pointSel = mrG.selectAll<SVGPathElement, DataPoint>("path.spc-mr-point").data(withMr).join("path")
         .attr("class", "spc-mr-point")
-        .attr("transform", p => `translate(${xPos(p)},${mrY(p.movingRange as number)})`)
+        .attr("transform", p => `translate(${xPos(p)},${mrY(cv(p) as number)})`)
         .attr("d", pointSymbol).attr("fill", colors.line);
 
     const viol = companionViolations(companion);
@@ -803,7 +808,7 @@ function drawMrChart(
     const marker = d3.symbol().type(symbolFor(violationShape, d3.symbolCircle)).size(100);
     const violSel = mrG.selectAll<SVGPathElement, DataPoint>("path.spc-mr-violation").data(violating).join("path")
         .attr("class", "spc-mr-violation")
-        .attr("transform", p => `translate(${xPos(p)},${mrY(p.movingRange as number)})`)
+        .attr("transform", p => `translate(${xPos(p)},${mrY(cv(p) as number)})`)
         .attr("d", marker).attr("fill", colors.violation);
 
     mrG.append("text")
@@ -812,20 +817,26 @@ function drawMrChart(
         .attr("x", -mrH / 2)
         .attr("y", -MARGIN.left + 12)
         .attr("text-anchor", "middle")
-        .text("Moving Range");
+        .text(companion.axisTitle);
 
     return { pointSel, violSel };
 }
 
-/** Centered empty-state / prompt message (e.g. when no fields are bound). */
+/** Centered empty-state / prompt message (e.g. when no fields are bound). `\n` splits into lines. */
 export function renderMessage(svg: Svg, text: string, width: number, height: number): void {
     svg.selectAll("*").remove();
     if (width <= 0 || height <= 0) return;
-    svg.append("text")
+    const lines = text.split("\n");
+    const lineH = 20;
+    const top = height / 2 - ((lines.length - 1) * lineH) / 2;
+    const t = svg.append("text")
         .attr("class", "spc-message")
         .attr("x", width / 2)
-        .attr("y", height / 2)
         .attr("text-anchor", "middle")
-        .attr("dominant-baseline", "middle")
-        .text(text);
+        .attr("dominant-baseline", "middle");
+    lines.forEach((line, i) => {
+        const sp = t.append("tspan").attr("x", width / 2).attr("y", top + i * lineH).text(line);
+        // First line of a multi-line message reads as a title.
+        if (lines.length > 1 && i === 0) sp.attr("class", "spc-message-title");
+    });
 }

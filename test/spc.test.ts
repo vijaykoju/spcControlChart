@@ -12,6 +12,8 @@ import { detectChangepoint, resolveChangepoint } from "../src/spc/changepoint";
 import { evaluateRules, RULES } from "../src/spc/rules";
 import { modelFromPhased, individualsStrategy } from "../src/spc/strategies/individuals";
 import { pStrategy, npStrategy, cStrategy, uStrategy } from "../src/spc/strategies/attribute";
+import { xbarRStrategy, xbarSStrategy } from "../src/spc/strategies/subgroup";
+import { constantsFor } from "../src/spc/constants";
 import { limitsFromModel, companionViolations } from "../src/spc/chartType";
 import { DataPoint, PhasedStatistics } from "../src/spc/types";
 import { buildTooltipItems, buildMrTooltipItems } from "../src/tooltip";
@@ -292,6 +294,60 @@ check("p-chart: point beyond per-point UCL fires rule 1; others clean",
     pViolRes[3].firedRules.includes(1) && !pViolRes[0].violation && !pViolRes[1].violation && !pViolRes[2].violation,
     pViolRes.map(r => r.firedRules));
 
+// ============================================================ subgroup charts (Phase 2)
+check("constants: m=5", (() => { const k = constantsFor(5); return !!k && near(k.A2, 0.577) && near(k.D4, 2.114) && near(k.A3, 1.427) && near(k.B4, 2.089) && k.D3 === 0; })());
+check("constants: m=7 has nonzero D3/B3", (() => { const k = constantsFor(7); return !!k && near(k.D3, 0.076) && near(k.B3, 0.118); })());
+check("constants: out of range / non-integer -> null", constantsFor(1) === null && constantsFor(26) === null && constantsFor(5.5) === null);
+
+const sub = (strategy: typeof xbarRStrategy, means: number[], spreads: number[], m: number) => {
+    const raw = buildDataPoints(means.map((v, i) => ({ label: "g" + i, value: v, categoryIndex: i, sampleSize: m, spread: spreads[i] })));
+    const pts = strategy.prepare(raw);
+    return { pts, model: strategy.computeLimits(pts, { opts: {} }) };
+};
+
+// X̄-R, m=5: x̄̄=10.4, R̄=4.4, A2=0.577, D4=2.114, D3=0.
+const xr = sub(xbarRStrategy, [10, 12, 11, 9, 10], [4, 5, 3, 6, 4], 5);
+check("X̄-R: x̄̄ ± A2·R̄ limits",
+    near(xr.model.perPoint[0].xBar, 10.4) && near(xr.model.perPoint[0].ucl, 10.4 + 0.577 * 4.4) && near(xr.model.perPoint[0].lcl, 10.4 - 0.577 * 4.4));
+check("X̄-R: zones from σ_X̄ = A2·R̄/3",
+    near(xr.model.perPoint[0].zoneAUpper, 10.4 + 2 * (0.577 * 4.4 / 3)) && near(xr.model.perPoint[0].zoneBUpper, 10.4 + (0.577 * 4.4 / 3)));
+check("X̄-R: R companion center/UCL/LCL + value = ranges",
+    near(xr.model.companion!.limits[0].center, 4.4) && near(xr.model.companion!.limits[0].ucl, 2.114 * 4.4) &&
+    xr.model.companion!.limits[0].lcl === 0 && xr.model.companion!.kind === "r" && xr.model.companion!.value[1] === 5);
+check("X̄-R: single-phase, constant limits", xr.model.singlePhase === true && xr.model.varyingLimits === false);
+
+// X̄-s, m=5: s̄=1.3, A3=1.427, B4=2.089.
+const xs = sub(xbarSStrategy, [10, 12, 11, 9, 10], [1.0, 1.5, 0.8, 2.0, 1.2], 5);
+check("X̄-s: x̄̄ ± A3·s̄ + s companion B4·s̄",
+    near(xs.model.perPoint[0].ucl, 10.4 + 1.427 * 1.3) && near(xs.model.companion!.limits[0].ucl, 2.089 * 1.3) &&
+    xs.model.companion!.kind === "s" && xs.model.companion!.axisTitle === "Std dev");
+
+// Zone-rule firing on X̄ (guards the σ_X̄ = A2·R̄/3 conversion): 2 of 3 means in Zone A.
+const xrZone = sub(xbarRStrategy, [13, 10, 13, 10, 10, 10], [4, 4, 4, 4, 4, 4], 5);
+const xrZoneRes = evaluateRules(xrZone.pts, limitsFromModel(xrZone.model), xbarRStrategy.applicableRules);
+check("X̄-R: Zone A rule fires (2 of 3 in Zone A)", xrZoneRes[2].firedRules.includes(2), xrZoneRes.map(r => r.firedRules));
+
+// Companion both-bound: a range below LCL (m≥7, D3>0) flags; an in-range range does not.
+const xrLow = sub(xbarRStrategy, [10, 10, 10, 10, 10, 10, 10], [5, 5, 5, 5, 5, 5, 0.1], 7);
+const cviol = companionViolations(xrLow.model.companion!);
+check("X̄-R: range below LCL (m≥7) flags the companion", cviol[6] === true && cviol[0] === false);
+
+// validation: invalid subgroup size → message; valid → null.
+check("X̄-R validate: subgroup size out of range",
+    typeof xbarRStrategy.validate!(sub(xbarRStrategy, [10, 10], [1, 1], 1).pts) === "string" &&
+    xbarRStrategy.validate!(sub(xbarRStrategy, [10, 10], [1, 1], 5).pts) === null);
+// validation: non-constant m and all-blank spread are rejected.
+const varM = buildDataPoints([
+    { label: "g0", value: 10, categoryIndex: 0, sampleSize: 5, spread: 4 },
+    { label: "g1", value: 11, categoryIndex: 1, sampleSize: 4, spread: 4 },
+]);
+check("X̄-R validate: non-constant subgroup size rejected", typeof xbarRStrategy.validate!(varM) === "string");
+const noSpread = buildDataPoints([
+    { label: "g0", value: 10, categoryIndex: 0, sampleSize: 5, spread: null },
+    { label: "g1", value: 11, categoryIndex: 1, sampleSize: 5, spread: null },
+]);
+check("X̄-R validate: all-blank spread rejected", typeof xbarRStrategy.validate!(noSpread) === "string");
+
 // ============================================================ tooltip (m9/m13)
 
 const items = buildTooltipItems(pts[0], results, phModel, fmt, "Month", "Rate", "Target");
@@ -346,7 +402,8 @@ check("toSidePosition passthrough + guard",
     toSidePosition("left") === "left" && toSidePosition("right") === "right" && toSidePosition("xyz") === "right");
 check("toChartType passthrough + guard",
     toChartType("individuals") === "individuals" && toChartType("p") === "p" &&
-    toChartType("u") === "u" && toChartType("xyz") === "individuals");
+    toChartType("u") === "u" && toChartType("xbar-r") === "xbar-r" &&
+    toChartType("xbar-s") === "xbar-s" && toChartType("xyz") === "individuals");
 // rule applicability: user-enabled ∩ chart-type-applicable
 check("applicableEnabledRules intersects enabled with applicable",
     eq([...applicableEnabledRules(new Set([1, 2, 3, 8]), new Set([1, 3, 4]))].sort(), [1, 3]));

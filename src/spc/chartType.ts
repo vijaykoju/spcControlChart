@@ -13,7 +13,7 @@ import { DataPoint, SpcStatistics } from "./types";
 import { PhaseSegment, StatsOptions } from "./statistics";
 import { ChangepointOptions } from "./changepoint";
 
-export type ChartType = "individuals" | "p" | "np" | "c" | "u"; // Phase 2+ adds "xbar-r" | "xbar-s" | ...
+export type ChartType = "individuals" | "p" | "np" | "c" | "u" | "xbar-r" | "xbar-s";
 
 /** Resolve the limits that apply to a given point — the single accessor the rule engine uses. */
 export type LimitsAccessor = (p: DataPoint) => SpcStatistics;
@@ -70,7 +70,10 @@ export interface ChartStrategy {
     /** Whether A/B/C zones are meaningful (drives zone shading + zone-rule eligibility). */
     zonesMeaningful: boolean;
     /** Data roles that must be bound for this chart type (drives the empty-state prompt). */
-    requiredRoles?: ("sampleSize")[];
+    requiredRoles?: ("sampleSize" | "spread")[];
+    /** Optional per-type validation on the prepared points; return a message to show instead of the
+     *  chart (e.g. subgroup size out of range), or null when valid. */
+    validate?(points: DataPoint[]): string | null;
     /** Axis/label name for the plotted statistic when it isn't the bound measure (p/u plot a
      *  proportion/rate, not the count). Falls back to the measure's display name. */
     valueLabel?: string;
@@ -88,7 +91,8 @@ export interface ChartStrategy {
  *  buildDataPoints guarantees (perPoint is aligned to points). */
 export const limitsFromModel = (m: LimitModel): LimitsAccessor => (p) => m.perPoint[p.index - 1];
 
-/** Dispersion-companion violations: value beyond its UCL (beyond-limit only — run rules are invalid
- *  on autocorrelated dispersion stats). Aligned to points; the single source for MR/R/s violations. */
+/** Dispersion-companion violations: value beyond either limit (beyond-limit only — run rules are
+ *  invalid on autocorrelated dispersion stats). For MR, lcl = 0 and values are ≥ 0, so the lower
+ *  test never fires. Aligned to points; the single source for MR/R/s violations. */
 export const companionViolations = (c: CompanionModel): boolean[] =>
-    c.value.map((v, i) => v != null && v > c.limits[i].ucl);
+    c.value.map((v, i) => v != null && (v > c.limits[i].ucl || v < c.limits[i].lcl));
