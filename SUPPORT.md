@@ -14,6 +14,9 @@
 ## Usage notes
 - Bind an **Axis (date or category)** and a **Measurement**; the visual computes all SPC statistics
   internally — no DAX required.
+- Pick the **chart type** in **Format → Chart** (individuals, attribute p/np/c/u, subgroup X̄-R/X̄-s,
+  or time-weighted EWMA/MA/CUSUM). Attribute and subgroup charts also need a **Sample size** field,
+  and X̄-R/X̄-s need a **Subgroup range or std dev** field.
 - To show gaps for missing periods, enable **"Show items with no data"** on the Axis field so Power
   BI delivers the blank rows.
 - See the project [README](README.md) and [`docs/`](docs/) for feature details, target-measure

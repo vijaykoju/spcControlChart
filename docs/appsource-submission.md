@@ -37,7 +37,7 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
 - ✅ **Latest API + latest `powerbi-visuals-tools`.** Cert requires the *latest*, not a minimum.
   Bumped `powerbi-visuals-api` → `~5.11.0` (was `~5.3.0`) and `pbiviz.json` `apiVersion` → `5.11.0`;
   pbiviz tools already at the latest 7.1.0. Re-verified clean: dedup, standalone `tsc`, `npm test`
-  (70), `pbiviz package`. **Re-check "latest" again at submission** (the floor moves over time).
+  (124), `pbiviz package`. **Re-check "latest" again at submission** (the floor moves over time).
 - ⬜ **`npm audit`** returns no **high/moderate** advisories.
 - ⬜ `pbiviz package --certification-audit` (pbiviz ≥6.1.0) reports clean. *(Only use
   `--certification-fix` for forbidden calls inside third-party libs you don't control, then update
@@ -49,7 +49,7 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
 ### Repo structure (cert prerequisite)
 - ✅ **Single-visual repository.** This repo (`spcControlChart`) contains code for *one visual only* —
   split out of the larger `spc-control-chart` dashboard project (which held the Power Query / DAX /
-  CSV). Verified self-contained: `npm install`, `npm test` (70), and `pbiviz package` all pass here.
+  CSV). Verified self-contained: `npm install`, `npm test` (124), and `pbiviz package` all pass here.
 - ⬜ **Push to a hosting provider** (e.g. GitHub) so the Power BI team can review it.
 - ⬜ **`certification` branch** (lowercase) whose source exactly matches the submitted `.pbiviz`
   (create it from the commit you build the submitted package from).
@@ -60,8 +60,8 @@ These are the gates we control in source. ✅ = done in-repo; ⬜ = open.
 
 ## Listing assets & account (user provides)
 - ⬜ **Partner Center** publisher account.
-- ⬜ **Support URL** — a real, working `https` page. *(Currently a placeholder in `pbiviz.json`:
-  `https://example.com/spc-control-chart`.)*
+- ✅ **Support URL** — set in `pbiviz.json` to the repo's [`SUPPORT.md`](../SUPPORT.md)
+  (`https://github.com/vijaykoju/spcControlChart/blob/main/SUPPORT.md`); `gitHubUrl` also set.
 - ⬜ **Privacy policy URL** — a Partner Center *listing* field (not in the package).
 - ⬜ **Icons / screenshots** — 20×20 package icon (present and verified: `assets/icon.png`, 20×20 px),
   plus a marketing icon and screenshots for the listing.
